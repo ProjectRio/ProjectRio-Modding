@@ -99,6 +99,7 @@
 #include "Include/menus/yd_step.h"
 #include "Include/text/text_channel.h"
 #include "Include/Symbols/dol.h"          // menuControlVariables_ADDR
+#include "RioModPack/OnlineMenu.h"       // ONLINE_SCREEN_CODE, for the watchdog
 // changeScreenVariables by raw address instead of Include/Local/LegacyMenus.h.
 // That header binds the file to MENU context (Include/Symbols/menus.h sets
 // MSSB_CONTEXT_MENUS, and game.h then #errors with "the game and menus RELs
@@ -304,6 +305,7 @@ static const ModOptionRow s_options[] =
     { "Custom Music",    MODOPT_ADDR(MODOPT_MUSIC),      1, PAGE_MUSIC   },
     { "Gecko Codes",     MODOPT_ADDR(MODOPT_GECKO),      1, PAGE_OPTIONS },
     { "Night Stadium",   MODOPT_ADDR(MODOPT_NIGHT_MARIO), 1, PAGE_OPTIONS },
+    { "Swing Skip",      MODOPT_ADDR(MODOPT_SWING_SKIP), 1, PAGE_OPTIONS },
 };
 #define OPT_COUNT ((int)(sizeof(s_options) / sizeof(s_options[0])))
 
@@ -501,7 +503,9 @@ void OptionsMenu()
             WriteTextEx(OPT_LABEL_X, y, sel ? TEXT_YELLOW : TEXT_WHITE,
                         TEXT_SMALL, TEXT_LEFT, "%s", s_musicSlotLabel[i]);
             WriteTextEx(MUSIC_TRACK_X, y,
-                        !live ? TEXT_RED : (trk == MUSIC_DEFAULT) ? TEXT_GRAY : TEXT_GREEN,
+                        !live ? TEXT_RED
+                              : (trk == MUSIC_DEFAULT || trk == MUSIC_OFF) ? TEXT_GRAY
+                              : TEXT_GREEN,
                         TEXT_SMALL, TEXT_LEFT, "%s", s_musicTrackLabel[trk]);
         }
 
@@ -626,7 +630,8 @@ void OptionsMenuRestore()
     ctrl = VAR_ADDRESS(u32, menuControlVariables_ADDR);
     if (ctrl < 0x80000000 || ctrl >= 0x81800000)
         return;                          // no menu control struct yet (boot)
-    if (VAR_ADDRESS(u16, ctrl + 2) != 6) // screenCode -- we are not the screen
+    if (VAR_ADDRESS(u16, ctrl + 2) != 6 && // screenCode -- we are not the screen
+        VAR_ADDRESS(u16, ctrl + 2) != ONLINE_SCREEN_CODE) // ...nor the Online one, which blanks the same way
     {
         RestoreBackground();
         // ...and take our text down with it. The B handler does this for free

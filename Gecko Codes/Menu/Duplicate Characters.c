@@ -5,6 +5,8 @@
 
 // *Lets the same character be drafted onto both teams, as many times as you
 // *want. Converted from the community gecko code "All Duplicate Characters".
+// *Duplicates and colour variants (all Toads, all Shy Guys, ...) get max
+// *chemistry with each other, so a stacked team is not a chemistry-less one.
 //
 // HOW THE GAME TRACKS IT. Character select keeps a 54-byte "already taken"
 // table, one byte per character id, at Static_Stats_Tables + 0x4757
@@ -81,7 +83,8 @@ static const CodePatch PATCHES[] = {
 #define N_PATCHES ((int)(sizeof(PATCHES) / sizeof(PATCHES[0])))
 
 CGECKO(DuplicateCharacters, .state = MSSB_MENU,
-       .notes = "Allows you to draft any character as many times as you want.");
+       .notes = "Allows you to draft any character as many times as you want.\n"
+                "Duplicates and colour variants have max chemistry.");
 void DuplicateCharacters()
 {
     // CGECKO_ACTIVE is 1 on its own; a pack that wants to toggle this mod
@@ -140,4 +143,53 @@ void DuplicateCharacters()
     cap = VAR_ADDRESS(u8, CAPTAIN_B);
     if (cap < TAKEN_COUNT)
         VAR_ADDRESS(u8, TAKEN_TABLE + cap) = 1;
+}
+
+/* =========================================================================
+   Duplicates & variants have chemistry
+   (Authors: PeacockSlayer, LittleCoaks -- was the standalone code of that name)
+
+   Static_Stats_Tables.characterStats is the master stat table, one row per
+   CHAR_ID; rows are copied into inMemRoster when a roster is built, so this
+   is the one place to edit chemistry for everyone. Every character gets max
+   chemistry with a copy of themselves, and every colour variant with the other
+   members of its group. Per frame, like the 00-type byte writes it replaced,
+   so it never matters when the game (re)loads the table -- and it runs in
+   every rel state because the table is read during the match too.
+   ========================================================================= */
+#define MAX_CHEMISTRY 99
+#define END -1
+
+static const s8 kVariantGroups[][6] = {
+    { CHAR_ID_KOOPA_GREEN,     CHAR_ID_KOOPA_RED,       END },
+    { CHAR_ID_PARATROOPA_RED,  CHAR_ID_PARATROOPA_GREEN, END },
+    { CHAR_ID_TOAD_RED,        CHAR_ID_TOAD_BLUE,       CHAR_ID_TOAD_YELLOW,  CHAR_ID_TOAD_GREEN,  CHAR_ID_TOAD_PURPLE, END },
+    { CHAR_ID_SHYGUY_RED,      CHAR_ID_SHYGUY_BLUE,     CHAR_ID_SHYGUY_YELLOW, CHAR_ID_SHYGUY_GREEN, CHAR_ID_SHYGUY_BLACK, END },
+    { CHAR_ID_PIANTA_BLUE,     CHAR_ID_PIANTA_RED,      CHAR_ID_PIANTA_YELLOW, END },
+    { CHAR_ID_NOKI_BLUE,       CHAR_ID_NOKI_RED,        CHAR_ID_NOKI_GREEN,   END },
+    { CHAR_ID_BRO_HAMMER,      CHAR_ID_BRO_FIRE,        CHAR_ID_BRO_BOOMERANG, END },
+    { CHAR_ID_MAGIKOOPA_BLUE,  CHAR_ID_MAGIKOOPA_RED,   CHAR_ID_MAGIKOOPA_GREEN, CHAR_ID_MAGIKOOPA_YELLOW, END },
+    { CHAR_ID_DRYBONES_GRAY,   CHAR_ID_DRYBONES_GREEN,  CHAR_ID_DRYBONES_RED, CHAR_ID_DRYBONES_BLUE, END },
+};
+
+CGECKO(DuplicatesHaveChemistry);
+void DuplicatesHaveChemistry(void)
+{
+    // Same toggle as the draft patches above. Nothing to undo when OFF: the
+    // stock values come back with the next table load from disc.
+    if (!CGECKO_ACTIVE)
+        return;
+
+    // ChemistryTable is one u8 per CHAR_ID, in id order
+    #define CHEM(me, other) ((u8*)&Static_Stats_Tables.characterStats[me].chemistry)[other]
+
+    // everyone with a copy of themselves
+    for (int id = 0; id < NUM_CHOOSABLE_CHARACTERS; id++)
+        CHEM(id, id) = MAX_CHEMISTRY;
+
+    // every variant with every other variant in its group
+    for (int g = 0; g < (int)(sizeof(kVariantGroups) / sizeof(kVariantGroups[0])); g++)
+        for (const s8* a = kVariantGroups[g]; *a != END; a++)
+            for (const s8* b = kVariantGroups[g]; *b != END; b++)
+                CHEM(*a, *b) = MAX_CHEMISTRY;
 }

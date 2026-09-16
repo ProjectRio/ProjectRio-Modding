@@ -53,7 +53,8 @@
 #define MODOPT_MUSIC        5
 #define MODOPT_GECKO        6
 #define MODOPT_NIGHT_MARIO  7
-#define MODOPT_COUNT        8
+#define MODOPT_SWING_SKIP   8
+#define MODOPT_COUNT        9
 
 #define MODOPT_ADDR(id)    (MODOPT_BASE + (id) * 4)
 #define ModOptionValue(id) VAR_ADDRESS(u32, MODOPT_ADDR(id))

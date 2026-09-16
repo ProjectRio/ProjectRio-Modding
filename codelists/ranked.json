@@ -1,0 +1,14 @@
+{
+    "name": "Ranked",
+    "description": "The competitive ruleset: everything in Gecko Codes/Ranked, on by default. Add a code to that folder and it lands in this download.",
+    "folders": ["Gecko Codes/Ranked"],
+    "enabled": true,
+    "exclude": [],
+    "_notes": [
+        "Nothing is excluded, so the folder currently ships BOTH Manual Fielder Select",
+        "v4.1 and v5.0 plus the in-progress C port, and all three patch 0x80678F8C.",
+        "They build fine and their gecko names differ, so nothing here can catch it --",
+        "the fix is to drop the superseded files from the folder (or move them out of",
+        "Ranked/), not to list exceptions here."
+    ]
+}

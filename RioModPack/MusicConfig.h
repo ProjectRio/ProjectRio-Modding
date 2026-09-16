@@ -44,21 +44,40 @@
 //   0        leave the game's own music alone
 //   1..15    the game's own streams, track id N -> stream id N-1
 //   16,17    star_01 / star_03: on the disc, unreachable by the stock game
-//   18..27   snd/my_snd_h/custom_01_h.adp .. custom_10_h.adp
+//   18       Letters: the unused song in ZZZZ.dat (our own MusyX stream, menu only)
+//   19       the Dictionary theme (a Musyx FX, menu only)
+//   20..29   snd/my_snd_h/custom_01_h.adp .. custom_10_h.adp
+//   30       Off: no music at all
+// Grouped by provenance: the game's own streams, then what ships on the disc
+// but the stock game never plays, then the user's own files, then Off -- which
+// also puts Off one step from Default across the wrap.
+// The order here IS the order the Options menu steps through. Slot words hold
+// these ids, so renumbering re-points a configured slot -- which is why
+// MUSICCFG_MAGIC is bumped with every renumbering: a stale config from an older
+// layout re-initialises to Default instead of being trusted.
 #define MUSIC_DEFAULT        0
 #define MUSIC_STOCK_FIRST    1
 #define MUSIC_STOCK_COUNT   15
 #define MUSIC_STAR_FIRST    16
 #define MUSIC_STAR_COUNT     2
-#define MUSIC_CUSTOM_FIRST  18
-#define MUSIC_CUSTOM_COUNT  10
+// The unused "Letters" song hiding in ZZZZ.dat. Not a stream descriptor: it is
+// DSP-ADPCM played through MusyX's own stream engine, revived by
+// RioModPack/LettersStream.h. Menu slot only, like the Dictionary theme -- a
+// match's stadium track is hardware DTK that would have to be cancelled, and
+// its SFX would compete for the voice.
+#define MUSIC_LETTERS       18
 // The Dictionary scene's theme. NOT a stream -- it is a Musyx FX layer, so it
 // is the one track that cannot be reached by retargeting a descriptor, and the
-// one track a stadium slot cannot use. See MusicTrackAvailable(). Appended
-// last on purpose: a slot word holds a track id, so inserting it anywhere else
-// would silently re-point every configured slot.
-#define MUSIC_DICTIONARY    28
-#define MUSIC_TRACK_COUNT   29
+// one track a stadium slot cannot use. See MusicTrackAvailable().
+#define MUSIC_DICTIONARY    19
+#define MUSIC_CUSTOM_FIRST  20
+#define MUSIC_CUSTOM_COUNT  10
+// No music. On a stadium slot the descriptor is pointed at a path that is not
+// on the disc: jukeboxPlay bails out when DVDFastOpen fails (0x800A8E74), so
+// nothing is queued or prepared and the match is simply silent. On the menu
+// slot the Musyx theme is stopped and nothing is started in its place.
+#define MUSIC_OFF           30
+#define MUSIC_TRACK_COUNT   31
 
 #define MUSIC_TRACK_STREAM(t) ((t) - MUSIC_STOCK_FIRST)   // valid for stock ids
 #define MUSIC_IS_STOCK(t)  ((t) >= MUSIC_STOCK_FIRST  && (t) < MUSIC_STOCK_FIRST + MUSIC_STOCK_COUNT)
@@ -81,7 +100,7 @@
 #define MUSIC_SAVED_BASE   0x802EB590    // 15 x 8 bytes: each stream's stock
                                          // {path,size}, captured once
 #define MUSICCFG_MAGIC_ADDR 0x802EB580   // one-shot init sentinel
-#define MUSICCFG_MAGIC     0x4D555332    // 'MUS2' -- bumped with the layout, so
+#define MUSICCFG_MAGIC     0x4D555334    // 'MUS4' -- bumped with the layout, so
                                          // a stale sentinel from the 8-slot
                                          // build re-initialises instead of
                                          // being trusted
@@ -130,10 +149,10 @@ static const char* const s_musicTrackLabel[MUSIC_TRACK_COUNT] =
     "Peach Garden",  "DK Jungle",     "Replay",       "Results",
     "Victory",       "Toy Field",     "Challenge Map", "Demo",
     "Ending Jingle", "Staff Roll",    "Home Run Jing",
-    "Star 01", "Star 03",
+    "Star 01", "Star 03", "Letters", "Dictionary",
     "Custom 01", "Custom 02", "Custom 03", "Custom 04", "Custom 05",
     "Custom 06", "Custom 07", "Custom 08", "Custom 09", "Custom 10",
-    "Dictionary",
+    "Off",
 };
 
 // ---- disc lookup ----------------------------------------------------------
@@ -153,6 +172,8 @@ static void MusicBuildPath(u32 track, char* out)
 
     if (MUSIC_IS_CUSTOM(track))
         src = "snd/my_snd_h/custom_00_h.adp";
+    else if (track == MUSIC_OFF)
+        src = "snd/my_snd_h/off_h.adp";          /* deliberately absent */
     else if (track == MUSIC_STAR_FIRST)
         src = "snd/my_snd_h/star_01_h.adp";
     else
@@ -204,9 +225,9 @@ static u32 MusicProbePath(const char* path)
  * routine at all. */
 static u32 MusicTrackAvailable(u32 slot, u32 track, char* scratch)
 {
-    if (track == MUSIC_DEFAULT || MUSIC_IS_STOCK(track))
+    if (track == MUSIC_DEFAULT || track == MUSIC_OFF || MUSIC_IS_STOCK(track))
         return 1;
-    if (track == MUSIC_DICTIONARY)
+    if (track == MUSIC_DICTIONARY || track == MUSIC_LETTERS)
         return slot == MUSIC_SLOT_MENU;
     if (!MUSIC_IS_STAR(track) && !MUSIC_IS_CUSTOM(track))
         return 0;                                    /* out of range */

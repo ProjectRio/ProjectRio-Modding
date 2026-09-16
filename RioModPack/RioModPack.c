@@ -24,6 +24,9 @@
 
 // ---- the options UI itself, never gated -- it is how you reach the toggles --
 #include "RioModPack/Options Menu.c"
+// The Online button and its placeholder screen. After Options Menu.c: it
+// shares that file's background blank/restore pair and its watchdog.
+#include "RioModPack/Online Menu.c"
 #include "Gecko Codes/Global/Boot To Main Menu.c"
 
 // Duplicate Characters gates ITSELF rather than being wrapped in
@@ -66,6 +69,22 @@
 #define CGECKO_GATE_ADDR MODOPT_ADDR(MODOPT_NIGHT_MARIO)
 #include "Gecko Codes/Menu/Nighttime Mario Stadium.c"
 
+// Skip First Swing Frame is two hooks that want different wiring. The swing
+// hook is raw ASM injected into game.rel -- it has no C body to test a
+// condition in, so it is gate-wrapped: the gate decides whether the branch is
+// installed when game.rel loads (flipping it mid-match takes effect at the
+// next game load). The instruction patches edit game code and have to keep
+// running while off to put it back, so they self-gate on CGECKO_ACTIVE instead --
+// and they also check that the ASM hook is really installed before applying, so a
+// mid-match toggle cannot leave the swing animation with nothing to arm it.
+#undef  CGECKO_GATE_ADDR
+#define CGECKO_GATE_ADDR MODOPT_ADDR(MODOPT_SWING_SKIP)
+#undef  CGECKO_ACTIVE
+#define CGECKO_ACTIVE ModOptionOn(MODOPT_SWING_SKIP)
+#include "Gecko Codes/Match/Skip First Swing Frame.c"
+#undef  CGECKO_ACTIVE
+#define CGECKO_ACTIVE 1
+
 // Custom music is configured, not switched: its eight slots each hold a track,
 // and "off" is every slot on Default. So it is NOT gated -- gating it away
 // would also stop it handing the audio back when a match loads. Only the notes
@@ -96,7 +115,7 @@
 // one option that does not work.
 #undef  CGECKO_ACTIVE
 #define CGECKO_ACTIVE (MusicSlot(MUSIC_SLOT_MENU) == MUSIC_DICTIONARY)
-#define DMM_SCREENS(sc) ((sc) == 5 || (sc) == 6)
+#define DMM_SCREENS(sc) ((sc) == 5 || (sc) == 6 || (sc) == ONLINE_SCREEN_CODE)
 #include "Gecko Codes/Menu/Dictionary Replaces Menu Music.c"
 #undef  CGECKO_ACTIVE
 #define CGECKO_ACTIVE 1

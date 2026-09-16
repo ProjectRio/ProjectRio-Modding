@@ -1,0 +1,8 @@
+{
+    "name": "Rio Built-in",
+    "description": "The codes Project Rio itself applies to every game -- netplay checksums, captain-select fixes, controller handling. Everything in Gecko Codes/Rio Built-in, on by default.",
+    "install": "These are the codes Rio applies on its own, so a player does not install this\nbundle: it is here so the set can be rebuilt and diffed against what Rio ships.\nIf you do need to load it by hand, it replaces the GYQE01.ini in Rio's user\nGameSettings folder -- never merged into the one already there, and never\nalongside another bundle that carries the same codes, since Rio applies every\nini it reads and a doubled code overruns the gecko region and hangs the boot.",
+    "folders": ["Gecko Codes/Rio Built-in"],
+    "enabled": true,
+    "exclude": []
+}

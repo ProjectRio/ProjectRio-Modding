@@ -82,6 +82,7 @@
 #include "Include/static/UnknownHomes_Static.h"
 #include "Include/musyx/musyx.h"
 #include "RioModPack/MusicConfig.h"
+#include "RioModPack/LettersStream.h"
 
 // ---- claimed RAM (see ClaimedFreeMemory.h) --------------------------------
 // g_mmtStarted holds a magic value rather than a flag: claimed RAM contains
@@ -182,6 +183,15 @@ static u32 musicResolve(u32 track, char* scratch, u32* path, u32* size)
     if (MUSIC_IS_STOCK(track))
     {
         musicStockDesc(MUSIC_TRACK_STREAM(track), path, size);
+        return 1;
+    }
+    if (track == MUSIC_OFF)
+    {
+        // A path that is NOT on the disc, on purpose: the jukebox opens it,
+        // DVDFastOpen fails, and jukeboxPlay returns without queueing anything.
+        MusicBuildPath(track, scratch);
+        *path = (u32)scratch;
+        *size = 0;
         return 1;
     }
     if (MUSIC_IS_STAR(track) || MUSIC_IS_CUSTOM(track))
@@ -367,7 +377,8 @@ CGECKO(CustomMusic,
        // draw the filenames as "custom?01?h.adp". They are spelled out in the
        // file header and in the ini description, which have no such limit.
        .notes = "Set the music for the menu and every streamed track. Custom "
-                ".adp files on the disc are offered too.");
+                ".adp files on the disc are offered too, and the unused "
+                "Letters song hidden in ZZZZ.dat.");
 void CustomMusic()
 {
     // `rel` is GlobalData.h's own macro for 0x800E877C: 0 = boot, 4 = menu,
@@ -384,6 +395,12 @@ void CustomMusic()
     {
         if (g_mmtStarted == MMT_MAGIC)
             mmtStop(1);
+        if (LettersStream_Active())
+        {
+            LettersStream_Stop();
+            g_menuMusicGuard  = 0;                   /* hand the routine back */
+            g_menuMusicHandle = 0;
+        }
         return;
     }
 
@@ -392,6 +409,20 @@ void CustomMusic()
     musicApplyStreams();
 
     want = MusicSlotTrack(MUSIC_SLOT_MENU);
+
+    // Letters is neither a descriptor nor an FX: it is our own MusyX stream
+    // (LettersStream.h). Any other selection retires it first so whatever
+    // starts next starts clean. Default and Dictionary want the game's routine
+    // back, guard included; every other track re-takes the guard itself.
+    if (want != MUSIC_LETTERS && LettersStream_Active())
+    {
+        LettersStream_Stop();
+        if (want == MUSIC_DEFAULT || want == MUSIC_DICTIONARY)
+        {
+            g_menuMusicGuard  = 0;
+            g_menuMusicHandle = 0;
+        }
+    }
 
     // The Dictionary theme is the one track that is not a stream: it is a Musyx
     // FX layer, swapped in by "Dictionary Replaces Menu Music" (included in the
@@ -410,7 +441,47 @@ void CustomMusic()
     {
         if (g_mmtStarted == MMT_MAGIC)
             mmtStop(0);                              // keep fx 484 suppressed
+        if (LettersStream_Active())
+            LettersStream_Stop();                    // that scene has its own track
         g_menuMusicGuard = 1;
+        return;
+    }
+
+    if (want == MUSIC_OFF)
+    {
+        // Silence: retire whatever is playing and hold the guard so the stock
+        // routine never restarts fx 484. Nothing is started in its place.
+        u32 handle = g_menuMusicHandle;
+        if (g_mmtStarted == MMT_MAGIC)
+            mmtStop(0);
+        if (handle != 0 && handle != 0xFFFFFFFF)
+            sndFXStop(handle);
+        g_menuMusicHandle = 0;
+        g_menuMusicGuard  = 1;
+        return;
+    }
+
+    if (want == MUSIC_LETTERS)
+    {
+        if (g_mmtStarted == MMT_MAGIC)
+            mmtStop(0);                              // the .adp host stream goes, guard stays
+
+        if (!LettersStream_Active())
+        {
+            // Silence the Musyx menu theme exactly as mmtStart does, then
+            // start ours. On a failed start the guard is NOT held below, so
+            // the stock routine simply restarts fx 484 on its next pass.
+            u32 handle = g_menuMusicHandle;
+            if (handle != 0 && handle != 0xFFFFFFFF)
+                sndFXStop(handle);
+            g_menuMusicHandle = 0;
+            LettersStream_Start();
+        }
+        if (LettersStream_Active())
+        {
+            g_menuMusicGuard = 1;
+            LettersStream_Pump();                    // keep the ring fed
+        }
         return;
     }
 

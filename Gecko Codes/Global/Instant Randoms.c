@@ -4,6 +4,10 @@
 // Author: LittleCoaks
 // *Boots directly to a random 5-inning match. P1 vs P2. Duplicates enabled.
 // *Randomizes home/away, all-or-nothing superstars, and star skills.
+// UnknownHomes_Game.h must come BEFORE UnknownHomes_Static.h: the static header
+// defines `inningSetting` as a macro and the game header has a struct field of
+// that name (GameInitOptions), which the macro would mangle if it came second.
+#include "Include/game/UnknownHomes_Game.h"
 #include "Include/static/UnknownHomes_Static.h"
 #include "Include/Unknown/File_0x80065dec.h"
 #include "Include/Unknown/File_0x80042bf0.h"
@@ -199,3 +203,22 @@ void DupLoadBindStore()
     u32 model = *(u32*)(0x8036E548 + (r8 << 2) + 11456);  // model[r8]
     *(u32*)((r3 ? r3 : 0x80370F1C) + 24) = model;          // bind; scratch on NULL
 }
+
+
+/* =========================================================================
+   Bundled codes
+   ========================================================================= */
+
+// Every slot may repeat any character, so the drafted teams need duplicates
+// (and variants) to have chemistry with each other. Its draft-screen patches
+// are inert here (this boot never visits the draft); the chemistry writer is
+// what matters.
+#include "Gecko Codes/Menu/Duplicate Characters.c"
+
+// TEMPORARY -- remove once the Rio client ships the REL-load Game ID code.
+// The client's built-in Game ID code only rolls an id on the menu's Start Game
+// button, which this boot never presses, so the client saw GameID == 0 and
+// wrote no stat file. Bundling the new version rolls the id when game.rel
+// links. Its clear hooks are the same as the client's, so both being present
+// is harmless.
+#include "Gecko Codes/Rio Built-in/Game ID.c"

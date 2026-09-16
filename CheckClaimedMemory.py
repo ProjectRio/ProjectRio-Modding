@@ -28,14 +28,15 @@ LEDGER = os.path.join(HERE, "ClaimedFreeMemory.h")
 # The free block the ledger governs (lbl_802EAF80 .. the live node at 0x802EC8F0)
 # plus the superstar bytes it also records. Literals outside these are not
 # checked: they are game objects, not claims.
-CHECKED_RANGES = [(0x802EAF80, 0x802ECFC0)]
+CHECKED_RANGES = [(0x802EAF80, 0x802ECFC0),
+                  (0x802ED140, 0x802EF140)]   # lbl_802ED140, the Letters ring
 
 # Source trees scanned for literals.
 SCAN_DIRS = ["Gecko Codes", "RioModPack", "Include/Rio"]
 
 ENTRY_RE = re.compile(r'^\s*"0x([0-9A-Fa-f]{8})"\s*:\s*"\(([^)]*)\)\s*--\s*(.*)"')
 SIZE_RE = re.compile(r"^\s*(\d+)\s*bytes")
-LITERAL_RE = re.compile(r"\b0x802E[ABCabc][0-9A-Fa-f]{3}\b")
+LITERAL_RE = re.compile(r"\b0x802E[A-Fa-f][0-9A-Fa-f]{3}\b")
 
 
 def parse_ledger(path):

@@ -366,6 +366,15 @@ def parse_param(p, idx):
 
     toks = p.split()
     if len(toks) == 1:
+        # `void*pOutData` -- the decomp sometimes writes the star against the
+        # name with no space, so the whole declarator arrives as one token.
+        # Treating that as a bare type emitted `void*pOutData a2`, which is two
+        # declarators and does not compile. Split at the last star instead;
+        # `VecXYZ*` has nothing after it and stays a bare type.
+        m = re.match(r"^(?P<typ>.*\*)\s*(?P<name>[A-Za-z_]\w*)$", p)
+        if m and m.group("name") not in TYPE_KEYWORDS:
+            typ, name = m.group("typ"), m.group("name")
+            return ("%s %s" % (typ, name), typ, name)
         return (p, p, "a%d" % idx)          # bare type: `u8`, `VecXYZ*`
 
     last, stars = toks[-1], ""
@@ -469,8 +478,6 @@ LAYOUT_ASSERT_SKIP = {
     "UnkStarDashFloatStruct",   # eight f32 + s16: C pads to 0x24, comment says 0x22
     "MiniGameStruct",           # embeds SomeStarDashStruct (holds an f32) at 2-aligned offsets
     "SomeStarDashStruct",       # same cluster; its offsets only make sense unaligned
-    "StatTable",                # 0x3B bytes in the game; holds a u32, so C makes it 0x3C
-    "CharacterStats",           # therefore chemistry sits at 0x3C in C but 0x3B in the game
 }
 STRUCT_OPEN_RE = re.compile(r"^\s*(?:typedef\s+)?struct(?:\s+\w+)?\s*\{\s*$")
 MEMBER_RE = re.compile(r"^\s*/\*\s*0x([0-9A-Fa-f]+)\s*\*/\s*(?P<decl>[^;]+);")

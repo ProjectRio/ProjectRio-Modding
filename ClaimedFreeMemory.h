@@ -5,6 +5,7 @@
 #include "CGecko/Common.h"
 
 {
+    "0x802EAF90" : "(b) -- Skip First Swing Frame: per-swing one-shot latch. bit0 = the hit reaction has already been held back for this swing, bit1 = the swing animation has already been armed for this swing. Cleared by the ifSwing counter hook on the frame a swing starts. Needed because a hit on the swing's first frame leaves framesSinceStartOfSwing frozen at 2 for the rest of the play, so every == 2 edge would otherwise re-fire every frame and restart the swing animation in a loop.",
     "0x802EB000" : "(4 bytes) -- Options Menu: g_savedDrawEnd, the UI element-loop end bound (0x803CB814) saved while the scene blanks the background; 0xFFFFFFFF = nothing saved",
     "0x802EB004" : "(4 bytes) -- Options Menu: g_bgMagic, one-shot init sentinel for the pair above (initialised by the MSSB_ALWAYS restore watchdog, which runs from boot)",
     "0x802EB010" : "(64 bytes, through 0x802EB04F) -- Mod option flags (MODOPT_BASE, Include/Rio/ModOptions.h): 16 WORDS, one per toggle. Words not bytes so a gecko conditional can test one directly (202EB0xx 00000001) with no mask arithmetic -- that is what cgecko's CGECKO_GATE_ADDR emits. The LAST word (0x802EB04C) is not an option: it holds MODOPT_SENTINEL, the latch saying ModOptions_ApplyDefaults has seeded the default-ON options (currently just MODOPT_GECKO), so options may run 0..14.",
@@ -82,11 +83,27 @@
 
     "0x802EC308" : "(4 bytes) -- Options Menu: g_magic one-shot init sentinel",
     "0x802EC30C" : "(16 bytes, through 0x802EC31B) -- Options Menu: s_list (ScreenList struct)",
-    // 0x802EC32C-0x802EC4EF was the Options Menu's ScreenText buffer and g_frame.
-    // FREE now -- both moved to 0x802EB050/0x802EB410 when the notes panel needed
-    // more slots than fit here.
+    // 0x802EC32C-0x802EC4EF was the Options Menu's ScreenText buffer and g_frame
+    // (both moved to 0x802EB050/0x802EB410 when the notes panel needed more slots).
+    // The Online Menu now takes its head; 0x802EC390-0x802EC4EF is FREE.
+    "0x802EC32C" : "(4 bytes) -- Online Menu: g_onlMagic, one-shot init sentinel for the block below",
+    "0x802EC330" : "(4 bytes) -- Online Menu: g_onlValid, the four record copies below exist",
+    "0x802EC334" : "(4 bytes) -- Online Menu: g_onlItem, the main-menu draw node the copies belong to",
+    "0x802EC338" : "(16 bytes, through 0x802EC347) -- Online Menu: g_onlBar/g_onlGrey/g_onlShine/g_onlLabel, pool record pointers of the Online button's four UI records",
+    "0x802EC348" : "(4 bytes) -- Online Menu: g_onlArmed, A was pressed on Online: the Options transition is rerouted to the Online screen",
+    "0x802EC34C" : "(32 bytes, through 0x802EC36B) -- Online Menu: the highlight-move animation in progress (g_onlAnim flag, arriving bar record + end frame, leaving bar record + end frame, shine record, cursor to publish, input-locked flag)",
+    "0x802EC36C" : "(12 bytes, through 0x802EC377) -- Online Menu: g_onlBg (the Online screen's backdrop is up and the tag-1 layout is recoloured), and the saved UI element-loop start/end bounds",
+    "0x802EC378" : "(24 bytes, through 0x802EC38F) -- Online Menu: the scene node the backdrop records hang off (+0x14 handle base, +0x16 count), passed to addGraphicsElementToScene/removeGraphicsElementFromScene",
     "0x802EC504" : "(952 bytes, through 0x802EC8BB) -- Load Challenge REL: glyph buffers for the debug-suite text overlays (TEXT_BUF_ADDR, TEXT_SLOTS 17, TEXT_MAXLEN 27)",
     "0x802EC8BC" : "(w) -- Load Challenge REL: captured argument of the debug menu's compiled-out renderer (fn_80048BEC), consumed and cleared each frame",
+
+    // NOT FREE: 0x802ED140-0x802EF13F (lbl_802ED140) is the RENDER THREAD'S STACK -- OSThread
+    // 0x803C7488, priority 12, stackEnd 0x802ED140 / stackBase 0x802EF140, read live 2026-09-09
+    // after a DMA into it crashed the game. It LOOKS unreferenced to every static scan (no
+    // code-formed address, no REL relocation, no data pointer) because a stack's only reference
+    // is to its END, 0x802EF140, which is the address of the next object. Treat any 8 KB block
+    // that "nothing references" with the same suspicion. CheckClaimedMemory.py keeps this range
+    // in CHECKED_RANGES with no claim in it, so any literal that lands here is a finding.
     // NOTE: the free block lbl_802EAF80 (0x802EAF80-0x802ECFC0) is NOT free all the way through --
     // the game keeps a live list node at 0x802EC8F0-0x802EC90C (verified by dumping the region on an
     // unmodded boot). Do not claim past 0x802EC8E0.
