@@ -6,6 +6,10 @@
 
 #include "Include/game/UnknownHomes_Game.h"
 #include "Include/musyx/musyx.h"
+#include "Include/menus/yd_step.h"
+#include "Include/Unknown/File_0x800b0a14.h"
+#include "Include/Symbols/dol.h"
+#include "Include/Rio/MenuMusic.h"
 
 // claimed RAM (see ClaimedFreeMemory.h)
 #define g_dmmLoading VAR_ADDRESS(u32, 0x802EC288) // a loader task is in flight
@@ -15,11 +19,7 @@
 #define g_dmmSavedVol VAR_ADDRESS(u32, 0x802EC2A8)  // 0 = nothing saved, else 0x100 | original
 #define g_dmmGone   VAR_ADDRESS(u32, 0x802EC2AC)  // consecutive frames fx 0 has been missing
 
-// game
-#define insertTask  ((void* (*)(void*, u32))0x800B0A5C)
-#define sndFXStop   ((void  (*)(u32))0x800C832C)
-
-#define LOADER_TASK_FN      ((void*)0x80021758)  // audio-file loader state machine
+#define LOADER_TASK_FN      ((void (*)(void))0x80021758)  // audioFileLoaderTask (no _ADDR in the decomp yet)
 #define PUSH_DICT_GROUP_FN  ((void*)0x800627C4)  // pushSoundGroup(0, *(0x800EF81C))
 #define DICT_AUDIO_FILE     4                    // 0x800EF508[4]
 #define MENU_MUSIC_FX       484
@@ -27,11 +27,9 @@
 #define DICT_MUSIC_LAYER    0x8021               // 0x8000 = "layer", id 0x21
 #define STOCK_MENU_LAYER    0x8022
 
-#define fxGroupCount  VAR_ADDRESS(u16, 0x803CC2D8)
-#define FX_GROUP_ARRAY             0x80316D70    // { u16 groupId; u16 numFx; u32; u32 fxTable; }
-#define g_menuMusicHandle VAR_ADDRESS(u32, 0x803C6714)
-#define g_menuMusicGuard  VAR_ADDRESS(u8,  0x803C6718)
-#define g_menuMusicVol    VAR_ADDRESS(u8,  0x803CB888)  // volume the routine starts at
+#define fxGroupCount  VAR_ADDRESS(u16, dataFXGroupNum_ADDR)
+#define FX_GROUP_ARRAY dataFXGroups_ADDR          // { u16 groupId; u16 numFx; u32; u32 fxTable; }
+#define g_menuMusicVol    VAR_ADDRESS(u8,  0x803CB888)  // menuMusicStartVolume (no _ADDR in the decomp yet)
 
 #define DMM_LOAD_TIMEOUT 900                     // ~15s; give up rather than hang silent
 
@@ -125,13 +123,8 @@ static int dmmGroupReallyGone(void)
 // Never use the fade u8 at 0x803C671A for this: that path deregisters the updater.
 static void dmmRestartMusic(void)
 {
-    u32 handle = g_menuMusicHandle;
-
-    if (handle != 0 && handle != 0xFFFFFFFF)
-        sndFXStop(handle);
-
-    g_menuMusicHandle = 0;
-    g_menuMusicGuard  = 0;                      // 0 = "not playing" -> routine restarts it
+    MenuMusic_StopVoice();
+    MenuMusic_Release();                        // 0 = "not playing" -> routine restarts it
 }
 
 // Pin the menu music volume to the entry's authored volume (the routine starts
@@ -152,7 +145,7 @@ static void dmmStandDown(void)
     if (fx != 0 && *(u16*)(fx + 2) == DICT_MUSIC_LAYER)
     {
         *(u16*)(fx + 2) = STOCK_MENU_LAYER;
-        if (g_menuMusicHandle != 0 && g_menuMusicHandle != 0xFFFFFFFF)
+        if (MenuMusic_IsPlaying())
             dmmRestartMusic();                  // swap back audibly, not on next scene
     }
     if (g_dmmSavedVol != 0)
@@ -169,9 +162,8 @@ CGECKO(DictionaryReplacesMenuMusic, .state = MSSB_MENU,
                 "instead of the usual menu music.");
 void DictionaryReplacesMenuMusic()
 {
-    u16 sc = *(u16*)(*(u32*)0x803CBBCC + 2);    // menuCtrl->screenCode
+    u16 sc = VAR_ADDRESS(menuControlStruct*, menuControlVariables_ADDR)->currentScreen;
     u8* fx;
-    u32 handle;
 
     if (!(CGECKO_ACTIVE))
     {
@@ -223,7 +215,7 @@ void DictionaryReplacesMenuMusic()
         if (g_dmmLoading == 0)
         {
             // hand the game a loader task for the Dictionary's audio file set
-            u8* node = (u8*)insertTask(LOADER_TASK_FN, 1);
+            u8* node = (u8*)insertGraphicDrawingFunction(LOADER_TASK_FN, 1);
             if (node == 0)
                 return;                         // pool full, try again next frame
 
@@ -263,8 +255,7 @@ void DictionaryReplacesMenuMusic()
         // point a stock (or freshly reloaded) table at the Dictionary track; restart only if something is playing
         *(u16*)(fx + 2) = DICT_MUSIC_LAYER;
 
-        handle = g_menuMusicHandle;
-        if (handle != 0 && handle != 0xFFFFFFFF)
+        if (MenuMusic_IsPlaying())
             dmmRestartMusic();
     }
 }

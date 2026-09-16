@@ -4,21 +4,9 @@
 // Author: LittleCoaks
 // Payload layout, field semantics and the boot state machine: docs/boot_to_match.md
 
-#include "Include/game/UnknownHomes_Game.h"
-
-#include "Include/static/UnknownHomes_Static.h"
-#include "Include/Unknown/File_0x80065dec.h"
-#include "Include/Unknown/File_0x800671fc.h"
-#include "Include/Unknown/File_0x80069854.h"
-#include "Include/Unknown/File_0x80064754.h"
-#include "Include/Unknown/File_0x800678cc.h"
-#include "Include/Unknown/File_0x80064a04.h"
+#include "Include/Rio/ForceSwapBoot.h"
+#include "Include/Rio/DupCharModelBind.h"
 #include "Include/menus/yd_step.h"
-#include "Include/menus/text_0323C.h"
-#include "Include/musyx/musyx.h"
-
-// game-REL object bound by address (Include/Symbols won't bind both RELs); only valid once game.rel is resident
-#define g_Scores VAR_ADDRESS(GameScoresControlsStruct, 0x808928A0)
 
 // Rosters and per-player arrays are in draft-slot order.
 typedef struct BootMatchSpec
@@ -150,8 +138,6 @@ static const BootMatchPayload boot_payload =
 // immediates, which would make the Client's byte patching a no-op.
 #define OPAQUE_PTR(p) __asm__("" : "+r"(p))
 
-// menu->game rel swap request (loader node 0x80111300 + 0x10)
-#define trigger_rel_change VAR_ADDRESS(short, 0x80111310)
 // claimed free memory: post-start outs-burst frame counter (shared with Boot Directly To Game; never run together)
 #define tbm_outsCounter VAR_ADDRESS(u8, 0x802EC01A)
 
@@ -170,40 +156,13 @@ static inline u32 tbm_runnerRestoreInstr(int i) { return (i == 0) ? 0xB0650234 :
 // `rel` to 5 up front, so the per-frame guard keeps it from re-entering.
 static inline void TestBoot_StageMatch(const BootMatchSpec* s, const BootStateConfig* c)
 {
-    inningSetting.rel = 5;
-    trigger_rel_change = 1;
-    sndFXStartEx(0x1bb, 0x40, 0x3f, 0x0); // rio bat SFX -- signals the boot
-
-    if (s->isCpuMatch)
-    {
-        // UNVERIFIED path. One human on port 1, CPU opponent.
-        g_d_GameSettings.p2_CPU_match_code = P2_CPU_CODE_1_PLAYER_GAME;
-        Static_Stats_Tables.playerNumberByPort[0] = 0;
-        Static_Stats_Tables.portsActiveInMatch[0] = 0;      // 0 = active
-        Static_Stats_Tables.portsActiveInMatch[1] = 0xFF;
-        Static_Stats_Tables.portsActiveInMatch[2] = 0xFF;
-        Static_Stats_Tables.portsActiveInMatch[3] = 0xFF;
-        Static_Stats_Tables.player2Ind = 0;
-        g_MatchInfo.player2Ind2                    = 0;
-    }
-    else
-    {
-        g_d_GameSettings.p2_CPU_match_code = P2_CPU_CODE_2_PLAYER_GAME;
-        Static_Stats_Tables.playerNumberByPort[0] = 0;      // P1 = port 1
-        Static_Stats_Tables.playerNumberByPort[1] = (u8)(s->p2Port - 1);
-        Static_Stats_Tables.portsActiveInMatch[0] = 0;
-        Static_Stats_Tables.portsActiveInMatch[1] = 0;
-        Static_Stats_Tables.portsActiveInMatch[2] = 0xFF;
-        Static_Stats_Tables.portsActiveInMatch[3] = 0xFF;
-        Static_Stats_Tables.player2Ind = 1;
-        g_MatchInfo.player2Ind2                    = 1;
-    }
+    ForceSwap_RequestGameRel();
+    ForceSwap_RegisterPlayers(s->isCpuMatch != 0, s->p2Port);   // CPU path UNVERIFIED
 
     Static_Stats_Tables.captainSelectedID[0] = s->captain[0];
     Static_Stats_Tables.captainSelectedID[1] = s->captain[1];
 
-    for (int i = 0; i < 54; i++)
-        Static_Stats_Tables.charOnCharacterGridSelected[i] = 0;
+    ForceSwap_ClearTakenGrid();
     for (int team = 0; team < 2; team++)
         for (int slot = 0; slot < 9; slot++)
             Static_Stats_Tables.charOnCharacterGridSelected[s->roster[team][slot]] = 1;
@@ -219,15 +178,7 @@ static inline void TestBoot_StageMatch(const BootMatchSpec* s, const BootStateCo
         }
     }
 
-    // conversion chain, once, in loadDemoMatch's order
-    copyInfoToInMemRoster();
-    teamLogoDetermination(0);
-    teamLogoDetermination(1);
-    unsure_FillRosterPositions(0);
-    unsure_FillRosterPositions(1);
-    characterSelectScreen(0);
-    characterSelectScreen(1);
-    setCaptainLocInRoster();
+    ForceSwap_StageRoster();
 
     g_d_GameSettings.StadiumID = (u8)cursorToStadIDMapping[s->stadiumCursor];
 
@@ -251,7 +202,7 @@ static inline void TestBoot_StageMatch(const BootMatchSpec* s, const BootStateCo
 // the boot load, so this never touches a normally-played match.
 static inline void TestBoot_ApplyGameState(const BootStateConfig* c)
 {
-    if (!c->apply_state || inningSetting.rel != 5)
+    if (!c->apply_state || inningSetting.rel != FORCESWAP_REL_GAME)
         return;
 
     if (g_GameLogic.EventTriggers_GameHasStarted == 0)
@@ -352,30 +303,8 @@ void TestNewBootMatch()
     OPAQUE_PTR(s);
     OPAQUE_PTR(c);
 
-    if (inningSetting.rel == 4)
+    if (inningSetting.rel == FORCESWAP_REL_MENU)
         TestBoot_StageMatch(s, c);
 
     TestBoot_ApplyGameState(c);
-}
-
-
-// Fix for duplicate characters (docs/duplicate_characters.md). No .instruction
-// on either hook: both REPLACE the instruction they overwrite.
-CGECKO(DupLoadBindCharID, .address = 0x800156B0);
-void DupLoadBindCharID()
-{
-    READ_GAME_REG(u32, entry, 5);                  // r5 = &table[r9]
-    u32 obj = *(u32*)entry;                        // table[r9]
-    WRITE_GAME_REG(3, obj ? obj : 0x80370F1C);
-}
-
-CGECKO(DupLoadBindStore, .address = 0x800156E4);
-void DupLoadBindStore()
-{
-    // READ_GAME_REG can't be used twice in one function; saved r<n> is at r30 + 0x8 + (n-3)*4
-    register u32 _fp __asm__("r30");
-    u32 r3    = *(volatile u32*)(_fp + 0x8);              // saved r3 = table[r9]
-    u32 r8    = *(volatile u32*)(_fp + 0x8 + ((8 - 3) << 2)); // saved r8
-    u32 model = *(u32*)(0x8036E548 + (r8 << 2) + 11456);  // model[r8]
-    *(u32*)((r3 ? r3 : 0x80370F1C) + 24) = model;          // bind; scratch on NULL
 }

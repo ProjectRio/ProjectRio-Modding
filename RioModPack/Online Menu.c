@@ -9,6 +9,8 @@
 #include "RioModPack/OnlineMenu.h"
 #include "RioModPack/OnlineTexture.h"
 #include "Include/Rio/MenuScene.h"
+#include "Include/Unknown/File_0x800363d8.h"   // load_Icon
+#include "Include/Unknown/File_0x800625a4.h"   // updateCharacterSelectProcessCode
 
 // ---- game objects -----------------------------------------------------------
 #define ONL_CURSOR        VAR_ADDRESS(s32, 0x80750BF0)   // lbl_2_bss_F410[0]: main-menu cursor
@@ -60,11 +62,8 @@
 #define R_ICON(r)    MS_OVERRIDE(r, 1)               // part-1 texture override (the label's)
 #define R_VISIBLE    MS_VISIBLE
 #define FRAME(n)     MS_FRAME_OF(n)
-#define BAR_REST_FRAME   FRAME(0xE)     // where the highlight bar sits once its slide has ended
+#define BTN_REST_FRAME   FRAME(0xE)     // where the highlight bar sits once its slide has ended
 #define PANEL_REST_FRAME FRAME(0xA)     // where the preview picture sits once faded in
-#define ONL_memcpy       MS_memcpy
-#define ONL_load_Icon    MS_load_Icon
-#define ONL_setProcess   MS_updateProcessCode
 #define ONL_ICON_TABLE   0x32                          // the preview pictures, indexed by button
 
 // ---- our state, in claimed RAM (see ClaimedFreeMemory.h) -------------------
@@ -91,9 +90,6 @@
 #define ONL_MAGIC        0x0A11E003
 
 #define ONL_ENTRY        (-2)   // "prev" for the slide-in when the scene is built
-
-#define ONL_makeCursorUnmovable MS_makeCursorUnmovable
-#define ONL_makeCursorMovable   MS_makeCursorMovable
 
 static void OnlineInitState(void)
 {
@@ -197,7 +193,7 @@ static void BuildOnlineButton(u32 item, const u8* tex, const u8* panel)
     if (g_onlBar)
     {
         R_FLAGS(g_onlBar) &= ~R_VISIBLE;        // shown only while selected
-        R_FRAME(g_onlBar)  = BAR_REST_FRAME;
+        R_FRAME(g_onlBar)  = BTN_REST_FRAME;
         R_PLAY(g_onlBar)   = 0;
     }
     g_onlGrey  = CopyRecord(grey, column);
@@ -255,7 +251,7 @@ void OnlineRecordWatchdog()
 {
     if (g_onlMagic != ONL_MAGIC || !g_onlValid)
         return;
-    if (!MS_MenuCtrlValid() || MS_SCREEN_CODE != MS_SCREEN_MAIN_MENU ||
+    if (MS_ScreenLeft(MS_SCREEN_MAIN_MENU) ||
         R_FLAGS(ItemRecord(g_onlItem, H_LABEL(0))) == 0 ||
         R_ELEM(ItemRecord(g_onlItem, H_LABEL(0))) != ELEM_LABEL)
         DropAllRecords();
@@ -307,17 +303,17 @@ static void MoveHighlight(u32 item, s32 prev, s32 cur)
 
     // The picture crossfade: incoming on handle 0x20 from frame 0, outgoing on 0x21 from 10.
     rec = ItemRecord(item, H_PANEL_NEW);
-    if (cur >= 0) ONL_load_Icon(item, H_PANEL_NEW, 1, ONL_ICON_TABLE, cur);
+    if (cur >= 0) load_Icon((void*)item, H_PANEL_NEW, 1, ONL_ICON_TABLE, cur);
     else          R_ICON(rec) = ONL_PANEL_VICTIM;
     R_FLAGS(rec) |= R_VISIBLE;
     if (prev != ONL_ENTRY)
     {
         R_FRAME(rec) = 0; R_PLAY(rec) = 1;
         rec = ItemRecord(item, H_PANEL_OLD);
-        if (prev >= 0) ONL_load_Icon(item, H_PANEL_OLD, 1, ONL_ICON_TABLE, prev);
+        if (prev >= 0) load_Icon((void*)item, H_PANEL_OLD, 1, ONL_ICON_TABLE, prev);
         else           R_ICON(rec) = ONL_PANEL_VICTIM;
         R_FLAGS(rec) |= R_VISIBLE; R_FRAME(rec) = PANEL_REST_FRAME; R_PLAY(rec) = 1;
-        ONL_makeCursorUnmovable(0);
+        MS_makeCursorUnmovable(0);
     }
 
     g_onlAnimNew    = newBar;
@@ -363,7 +359,7 @@ static void OnlineAnimTick(void)
     g_onlAnim = 0;
     ONL_CURSOR_SHOWN = (s32)g_onlAnimCur;
     if (g_onlAnimLocked)
-        ONL_makeCursorMovable(0);
+        MS_makeCursorMovable(0);
 }
 
 // D-pad branch, the `bl updateCharacterSelectProcessCode(0, 0x56)` after the wrap: both wraps become -1.
@@ -385,7 +381,7 @@ void OnlineCursorMove()
     }
     if (cur >= 0 && prev >= 0)
     {
-        ONL_setProcess(0, 0x56);
+        updateCharacterSelectProcessCode(0, 0x56);
         return;
     }
     MoveHighlight(g_onlItem, prev, cur);
@@ -412,11 +408,10 @@ void OnlineConfirmAnim()
 {
     OnlineInitState();
     if (!g_onlArmed)
-        ONL_setProcess(0, 0x58);
+        updateCharacterSelectProcessCode(0, 0x58);
 }
 
 // mainMenuRelated state 8, the Options transition's `bl changeScreenVariables`.
-#define changeScreenVariables ((int (*)(int))0x80640234)
 CGECKO(OnlineScreenChange, .address = 0x8064179C, .state = MSSB_MENU,
                            .instruction = "nop");
 void OnlineScreenChange()
@@ -533,11 +528,15 @@ void OnlineScene()
 }
 
 // Safety net: drop the backdrop if the screen is left by any route but B.
+static void DropOnlineBackdrop(void)
+{
+    DropBackdrop(s_onlPurple, s_onlRed);
+}
+
 CGECKO(OnlineBackdropWatchdog, .state = MSSB_ALWAYS);
 void OnlineBackdropWatchdog()
 {
     if (g_onlMagic != ONL_MAGIC || !g_onlBg)
         return;
-    if (!MS_MenuCtrlValid() || MS_SCREEN_CODE != ONLINE_SCREEN_CODE)
-        DropBackdrop(s_onlPurple, s_onlRed);
+    MS_ScreenWatchdog(ONLINE_SCREEN_CODE, DropOnlineBackdrop);
 }

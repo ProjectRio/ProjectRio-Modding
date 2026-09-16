@@ -7,6 +7,7 @@
 
 #include "Include/static/UnknownHomes_Static.h"
 #include "Include/musyx/musyx.h"
+#include "Include/Rio/MenuMusic.h"
 #include "RioModPack/MusicConfig.h"
 #include "RioModPack/LettersStream.h"
 
@@ -19,21 +20,13 @@
 #define g_musicMagic   VAR_ADDRESS(u32, MUSICCFG_MAGIC_ADDR)
 
 // ---- game ------------------------------------------------------------------
-#define playStream  ((void (*)(u8))0x8006877C)
-#define jukeboxStop ((void (*)(void))0x800A8F68)
-#define jukeboxCmd  ((void (*)(u32))0x800A86B4)      // 4 = cancel the DVD stream
-#define sndFXStop   ((void (*)(u32))0x800C832C)
-
 #define HOST_ID         14                           // home_in: the descriptor the menu borrows
 #define MUSIC_HOST_SLOT 15                           // the slot that drives it
-#define JUKEBOX_WORK 0x8034E478                      // 80 bytes per stream id
-#define JUKEBOX_HEAD 0x803CC150                      // r13 - 0x75F0
+#define JUKEBOX_WORK 0x8034E478                      // jukeboxWork (unbound): 80 bytes per stream id
+#define JUKEBOX_HEAD VAR_ADDRESS(u8*, jukeboxQueueHead_ADDR)
 #define MMT_WORK_BUF (JUKEBOX_WORK + HOST_ID * 80)
 
-#define g_menuMusicHandle VAR_ADDRESS(u32, 0x803C6714)
-#define g_menuMusicGuard  VAR_ADDRESS(u8,  0x803C6718)
-
-#define STREAM_ENTRY(id) ((u8*)(MUSIC_STREAM_TABLE + (id) * 16))
+#define STREAM_ENTRY(id) (&VAR_ADDRESS(StreamDescriptor, MUSIC_STREAM_TABLE + (id) * sizeof(StreamDescriptor)))
 #define SAVED_ENTRY(slot) ((u32*)(MUSIC_SAVED_BASE + ((slot) - 1) * 8))
 
 /* Capture each stream's stock descriptor exactly once, before any retarget. */
@@ -47,11 +40,11 @@ static void musicInitOnce(void)
 
     for (slot = 1; slot < MUSIC_SLOT_COUNT; slot++)
     {
-        u8*  e = STREAM_ENTRY(s_musicSlotStream[slot]);
+        StreamDescriptor* e = STREAM_ENTRY(s_musicSlotStream[slot]);
         u32* s = SAVED_ENTRY(slot);
 
-        s[0] = *(u32*)(e + 0);
-        s[1] = *(u32*)(e + 4);
+        s[0] = (u32)e->path;
+        s[1] = e->size;
     }
     MusicConfig_Reset();
 }
@@ -72,9 +65,9 @@ static void musicStockDesc(u32 id, u32* path, u32* size)
         }
     }
     {
-        u8* e = STREAM_ENTRY(id);
-        *path = *(u32*)(e + 0);
-        *size = *(u32*)(e + 4);
+        StreamDescriptor* e = STREAM_ENTRY(id);
+        *path = (u32)e->path;
+        *size = e->size;
     }
 }
 
@@ -96,14 +89,14 @@ static u32 musicResolve(u32 track, char* scratch, u32* path, u32* size)
     }
     if (MUSIC_IS_STAR(track) || MUSIC_IS_CUSTOM(track))
     {
-        u32 len;
+        s32 len;
 
         MusicBuildPath(track, scratch);
-        len = MusicProbePath(scratch);
-        if (len == 0)
+        len = Fst_ProbePath(scratch);
+        if (len <= 0)
             return 0;                                // not on this disc
         *path = (u32)scratch;
-        *size = len;
+        *size = (u32)len;
         return 1;
     }
     return 0;                                        // Default, or out of range
@@ -111,7 +104,7 @@ static u32 musicResolve(u32 track, char* scratch, u32* path, u32* size)
 
 static void musicApplySlot(int slot)
 {
-    u8*  e     = STREAM_ENTRY(s_musicSlotStream[slot]);
+    StreamDescriptor* e = STREAM_ENTRY(s_musicSlotStream[slot]);
     u32* saved = SAVED_ENTRY(slot);
     char* buf  = (char*)(MUSIC_PATHBUF_BASE + (slot - 1) * MUSIC_PATHBUF_SIZE);
     u32  track = MusicSlotTrack(slot);
@@ -121,11 +114,11 @@ static void musicApplySlot(int slot)
     if (track != MUSIC_DEFAULT)
         musicResolve(track, buf, &path, &size);
 
-    if (*(u32*)(e + 0) != path || *(u32*)(e + 4) != size)
+    if ((u32)e->path != path || e->size != size)
     {
-        *(u32*)(e + 0)  = path;
-        *(u32*)(e + 4)  = size;
-        *(u32*)(e + 12) = size;
+        e->path  = (const char*)path;
+        e->size  = size;
+        e->sizeC = size;
     }
 }
 
@@ -146,7 +139,7 @@ static void musicApplyStreams(void)
 static s32 mmtQueuedGameStream(void)
 {
     u8* work = (u8*)MMT_WORK_BUF;                    // ours -- the one to ignore
-    u8* node = *(u8**)JUKEBOX_HEAD;
+    u8* node = JUKEBOX_HEAD;
     u32 hops;
 
     for (hops = 0; hops < 16; hops++)
@@ -178,10 +171,7 @@ static void mmtStop(u32 releaseGuard)
     musicApplySlot(MUSIC_HOST_SLOT);                 // apply, so its skip lifts
 
     if (releaseGuard != 0)
-    {
-        g_menuMusicGuard  = 0;                       // let the stock music start again
-        g_menuMusicHandle = 0;
-    }
+        MenuMusic_Release();                         // let the stock music start again
 
     if (queued >= 0)
         playStream((u8)queued);
@@ -190,20 +180,17 @@ static void mmtStop(u32 releaseGuard)
 /* Start the menu stream on `track`. On a probe miss nothing is touched. */
 static void mmtStart(u32 track)
 {
-    u8*  e = STREAM_ENTRY(HOST_ID);
-    u32  path, size, handle;
+    StreamDescriptor* e = STREAM_ENTRY(HOST_ID);
+    u32  path, size;
 
     if (!musicResolve(track, (char*)MMT_PATH_BUF, &path, &size))
         return;
 
-    *(u32*)(e + 0)  = path;
-    *(u32*)(e + 4)  = size;
-    *(u32*)(e + 12) = size;
+    e->path  = (const char*)path;
+    e->size  = size;
+    e->sizeC = size;
 
-    handle = g_menuMusicHandle;
-    if (handle != 0 && handle != 0xFFFFFFFF)
-        sndFXStop(handle);
-    g_menuMusicHandle = 0;
+    MenuMusic_StopVoice();
 
     jukeboxStop();                                   // a stale stadium track may still be head
 
@@ -217,7 +204,7 @@ CGECKO(CustomMusic,
                 "songs added to the disc can be picked too.");
 void CustomMusic()
 {
-    u16 sc = *(u16*)0x800E877E;                      // menuCtrl->screenCode
+    u16 sc = inningSetting.currentScene;
     u32 want;
 
     musicInitOnce();
@@ -229,8 +216,7 @@ void CustomMusic()
         if (LettersStream_Active())
         {
             LettersStream_Stop();
-            g_menuMusicGuard  = 0;                   /* hand the routine back */
-            g_menuMusicHandle = 0;
+            MenuMusic_Release();                     /* hand the routine back */
         }
         return;
     }
@@ -243,10 +229,7 @@ void CustomMusic()
     {
         LettersStream_Stop();
         if (want == MUSIC_DEFAULT || want == MUSIC_DICTIONARY)
-        {
-            g_menuMusicGuard  = 0;
-            g_menuMusicHandle = 0;
-        }
+            MenuMusic_Release();
     }
 
     if (want == MUSIC_DICTIONARY)
@@ -262,19 +245,15 @@ void CustomMusic()
             mmtStop(0);                              // keep fx 484 suppressed
         if (LettersStream_Active())
             LettersStream_Stop();                    // that scene has its own track
-        g_menuMusicGuard = 1;
+        menuMusic.playing = 1;
         return;
     }
 
     if (want == MUSIC_OFF)
     {
-        u32 handle = g_menuMusicHandle;
         if (g_mmtStarted == MMT_MAGIC)
             mmtStop(0);
-        if (handle != 0 && handle != 0xFFFFFFFF)
-            sndFXStop(handle);
-        g_menuMusicHandle = 0;
-        g_menuMusicGuard  = 1;
+        MenuMusic_Hold();
         return;
     }
 
@@ -285,15 +264,12 @@ void CustomMusic()
 
         if (!LettersStream_Active())
         {
-            u32 handle = g_menuMusicHandle;
-            if (handle != 0 && handle != 0xFFFFFFFF)
-                sndFXStop(handle);
-            g_menuMusicHandle = 0;
+            MenuMusic_StopVoice();
             LettersStream_Start();
         }
         if (LettersStream_Active())
         {
-            g_menuMusicGuard = 1;
+            menuMusic.playing = 1;
             LettersStream_Pump();                    // keep the ring fed
         }
         return;
@@ -316,5 +292,5 @@ void CustomMusic()
         mmtStart(want);
 
     if (g_mmtStarted == MMT_MAGIC)
-        g_menuMusicGuard = 1;
+        menuMusic.playing = 1;
 }

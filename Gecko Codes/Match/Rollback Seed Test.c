@@ -11,7 +11,7 @@
 #include "Include/text/text_channel.h"
 #define SCRATCH   0x815B4000   // verified-free high MEM1 (2 MB zero run); NOT a game buffer
 #define N_SEED    21
-#define HASH_LO   0x8088A7E4
+#define HASH_LO   ((u32)&g_Stats)
 #define HASH_HI   0x80893AA0
 
 #define RT_HEART  VAR_ADDRESS(u32, 0x802EBFC0)

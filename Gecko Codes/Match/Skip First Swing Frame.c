@@ -4,8 +4,9 @@
 // Author: LittleCoaks
 // How a swing counts, why a latch, and every hook site: docs/swing_frames.md
 #include "Include/game/UnknownHomes_Game.h"
+#include "Include/Rio/PatchTable.h"
 
-#define SWING_LATCH        0x802EAF90    /* see ClaimedFreeMemory.h */
+#define SWING_LATCH       0x802EAF90    /* see ClaimedFreeMemory.h */
 #define SWING_LATCH_HI     "0x802F"      /* lis / lbz -0x5070 reach it */
 #define SWING_LATCH_LO     "-0x5070"
 #define LATCH_REACTION_HELD 1            /* bit0: hit reaction already held  */
@@ -72,12 +73,11 @@ ASM(SkipFirstSwingFrame_ArmAnim,
 #define CMPWI_R0_1 0x2C000001
 #define CMPWI_R0_2 0x2C000002
 
-static const u32 REPLAY_FRAME_ONE_TESTS[] = {
-    0x80654504,     /* fn_3_15458: camera / replay start frame      */
-    0x80654610,     /* assignFrameCountersToAPointer: replay stamp  */
-    0x80654B70,     /* fn_3_15A98: replay flag                      */
+static const RioPatch REPLAY_FRAME_ONE_TESTS[] = {
+    { 0x80654504, CMPWI_R0_1, CMPWI_R0_2 },     /* fn_3_15458: camera / replay start frame      */
+    { 0x80654610, CMPWI_R0_1, CMPWI_R0_2 },     /* assignFrameCountersToAPointer: replay stamp  */
+    { 0x80654B70, CMPWI_R0_1, CMPWI_R0_2 },     /* fn_3_15A98: replay flag                      */
 };
-#define N_TESTS ((int)(sizeof(REPLAY_FRAME_ONE_TESTS) / sizeof(REPLAY_FRAME_ONE_TESTS[0])))
 
 CGECKO(SkipFirstSwingFrame_Patches, .state = MSSB_GAME,
        .notes = "Every swing starts on frame 2 instead of\n"
@@ -85,14 +85,5 @@ CGECKO(SkipFirstSwingFrame_Patches, .state = MSSB_GAME,
                 "Frame 1 can never make contact anyway.");
 void SkipFirstSwingFrame_Patches(void)
 {
-    bool on = CGECKO_ACTIVE;
-    int i;
-
-    for (i = 0; i < N_TESTS; i++)
-    {
-        if (on)
-            PatchInstruction_Conditional(REPLAY_FRAME_ONE_TESTS[i], CMPWI_R0_1, CMPWI_R0_2);
-        else
-            PatchInstruction_Conditional(REPLAY_FRAME_ONE_TESTS[i], CMPWI_R0_2, CMPWI_R0_1);
-    }
+    RioPatch_Apply(REPLAY_FRAME_ONE_TESTS, RIO_PATCH_COUNT(REPLAY_FRAME_ONE_TESTS), CGECKO_ACTIVE);
 }

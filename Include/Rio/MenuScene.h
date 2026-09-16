@@ -6,7 +6,8 @@
 // Names the UI record pool, scene nodes/handles, containers and layouts, and
 // wraps the DOL routines on them: MS_Record(node, handle) to reach a stock
 // record, MS_CopyRecord/MS_DropRecord to clone one, MS_BuildScene/MS_RemoveScene
-// for records of your own, MS_RetargetTexture, MS_NarrowDraw/MS_RestoreDraw.
+// for records of your own, MS_RetargetTexture, MS_NarrowDraw/MS_RestoreDraw,
+// MS_ScreenWatchdog for the MSSB_ALWAYS safety net.
 // Model, offsets and the cgecko rules of the road: docs/menu_scenes.md.
 
 #ifndef MENUSCENE_H
@@ -14,41 +15,50 @@
 
 #include "CGecko/Common.h"
 #include "Include/types.h"
+#include "Include/Dolphin/stl.h"
+#include "Include/Symbols/dol.h"
+#include "Include/menus/yd_step.h"
+#include "Include/Unknown/File_0x80034cec.h"
+#include "Include/Unknown/File_0x80034e20.h"
+#include "Include/Unknown/File_0x800b0a14.h"
 
 // ---- the pool of UI records --------------------------------------------------
-#define MS_POOL          0x8039C3E0
-#define MS_POOL_COUNT    864
-#define MS_REC_SIZE      0xC0
+// Records are handled as u32 addresses; the fields come from the decomp's UIRecord.
+#define MS_POOL          0x8039C3E0                     // menuGraphicsStructures (unbound extern)
+#define MS_POOL_COUNT    UI_RECORD_COUNT
+#define MS_REC_SIZE      sizeof(UIRecord)
 #define MS_REC(i)        (MS_POOL + (i) * MS_REC_SIZE)
 #define MS_REC_INDEX(r)  (((r) - MS_POOL) / MS_REC_SIZE)
+#define MS_REC_PTR(r)    ((UIRecord*)(r))
+#define MS_REC_U32(r, f) VAR_ADDRESS(u32, (u32)&MS_REC_PTR(r)->f)
 
-#define MS_PARENT(r)     VAR_ADDRESS(u32, (r) + 0x00)
-#define MS_NEXT(r)       VAR_ADDRESS(u32, (r) + 0x04)
-#define MS_CHILD(r)      VAR_ADDRESS(u32, (r) + 0x08)
-#define MS_POSX(r)       VAR_ADDRESS(u32, (r) + 0x48)   // f32 bits
-#define MS_POSY(r)       VAR_ADDRESS(u32, (r) + 0x4C)
-#define MS_POSZ(r)       VAR_ADDRESS(u32, (r) + 0x50)
-#define MS_FLAGS(r)      VAR_ADDRESS(u32, (r) + 0x54)   // 0 = free
-#define MS_COLOUR(r)     VAR_ADDRESS(u32, (r) + 0x58)
-#define MS_FRAME(r)      VAR_ADDRESS(u32, (r) + 0x5C)   // 16.16
-#define MS_RATE(r)       VAR_ADDRESS(u32, (r) + 0x60)
-#define MS_ELEM(r)       VAR_ADDRESS(u16, (r) + 0x64)
-#define MS_SLOT(r)       VAR_ADDRESS(u8,  (r) + 0x66)
-#define MS_LAYER(r)      VAR_ADDRESS(u8,  (r) + 0x67)
-#define MS_PLAY(r)       VAR_ADDRESS(u8,  (r) + 0x68)
-#define MS_SUBINDEX(r)   VAR_ADDRESS(s16, (r) + 0x72)
-#define MS_ANCHOR_MTX(r) ((r) + 0x78)
-#define MS_ATTACHED(r)   VAR_ADDRESS(u8,  (r) + 0xA8)
-#define MS_OVERRIDE(r,i) VAR_ADDRESS(u16, (r) + 0xAC + (i) * 2)
+#define MS_PARENT(r)     MS_REC_U32(r, parent)
+#define MS_NEXT(r)       MS_REC_U32(r, next)
+#define MS_CHILD(r)      MS_REC_U32(r, firstChild)
+#define MS_POSX(r)       MS_REC_U32(r, pos.x)           // f32 bits
+#define MS_POSY(r)       MS_REC_U32(r, pos.y)
+#define MS_POSZ(r)       MS_REC_U32(r, pos.z)
+#define MS_FLAGS(r)      (MS_REC_PTR(r)->flags)         // 0 = free
+#define MS_COLOUR(r)     (MS_REC_PTR(r)->rgba)
+#define MS_FRAME(r)      (MS_REC_PTR(r)->frame)         // 16.16
+#define MS_RATE(r)       (MS_REC_PTR(r)->rate)
+#define MS_ELEM(r)       (MS_REC_PTR(r)->elementIndex)
+#define MS_SLOT(r)       (MS_REC_PTR(r)->textureSlot)
+#define MS_LAYER(r)      (MS_REC_PTR(r)->layer)
+#define MS_PLAY(r)       (MS_REC_PTR(r)->playMode)
+#define MS_SUBINDEX(r)   (MS_REC_PTR(r)->anchorSub)
+#define MS_ANCHOR_MTX(r) ((u32)&MS_REC_PTR(r)->anchor)
+#define MS_ATTACHED(r)   (MS_REC_PTR(r)->attachedThisFrame)
+#define MS_OVERRIDE(r,i) (MS_REC_PTR(r)->textureOverride[i])
 
-#define MS_VISIBLE       2
-#define MS_NO_OVERRIDE   0xFFFF
+#define MS_VISIBLE       UI_FLAG_VISIBLE
+#define MS_NO_OVERRIDE   UI_NO_OVERRIDE
 #define MS_FRAME_OF(n)   ((u32)(n) << 16)
 #define MS_FRAME_NO(r)   (MS_FRAME(r) >> 16)
 
-#define MS_PLAY_STOP     0
-#define MS_PLAY_FORWARD  1
-#define MS_PLAY_BACKWARD 4
+#define MS_PLAY_STOP     UI_PLAY_STOP
+#define MS_PLAY_FORWARD  UI_PLAY_FORWARD
+#define MS_PLAY_BACKWARD UI_PLAY_BACKWARD
 
 // f32 bit patterns for positions without touching the FPU.
 #define MS_F32_0         0x00000000
@@ -65,10 +75,10 @@ static inline u32 ms_f32_of_int(u32 i)
 }
 
 // ---- scene nodes and handles ---------------------------------------------------
-#define MS_GRA_ARRAY     0x80371C30
-#define MS_NODE_BASE(n)  VAR_ADDRESS(u16, (n) + 0x14)
-#define MS_NODE_COUNT(n) VAR_ADDRESS(u16, (n) + 0x16)
-#define MS_CURRENT_NODE  VAR_ADDRESS(u32, 0x803CC1B8)   // currentDrawingItem
+#define MS_GRA_ARRAY     0x80371C30                     // graphicsRelatedArray (unbound)
+#define MS_NODE_BASE(n)  VAR_ADDRESS(u16, (u32)&((DrawingSceneStruct*)(n))->unk_14)       // firstHandle
+#define MS_NODE_COUNT(n) VAR_ADDRESS(u16, (u32)&((DrawingSceneStruct*)(n))->unk_14 + 2)   // handleCount
+#define MS_CURRENT_NODE  ((u32)currentDrawingItem)
 
 static inline u32 MS_Record(u32 node, int handle)
 {
@@ -76,20 +86,8 @@ static inline u32 MS_Record(u32 node, int handle)
 }
 
 // ---- the DOL routines --------------------------------------------------------
-typedef void* (*ms_memcpy_t)(void*, const void*, int);
-typedef void  (*ms_flush_t)(const void*, u32);
-typedef void  (*ms_scene_t)(u32 node, const void* descriptors);
-typedef void  (*ms_node_t)(u32 node);
-typedef void  (*ms_loadicon_t)(u32 node, int handle, int part, int table, int idx);
-typedef void  (*ms_process_t)(int channel, int code);
-typedef void  (*ms_lock_t)(int channel);
-
-#define MS_memcpy                 ((ms_memcpy_t)0x800054F4)
-#define MS_DCFlushRange           ((ms_flush_t)0x8006E894)
-#define MS_addGraphicsElementToScene      ((ms_scene_t)0x80034E20)
-#define MS_removeGraphicsElementFromScene ((ms_node_t)0x80034CEC)
-#define MS_load_Icon              ((ms_loadicon_t)0x800363D8)
-#define MS_updateProcessCode      ((ms_process_t)0x800625A4)  // updateCharacterSelectProcessCode
+// The decomp declares these (void), but the DOL indexes its per-channel state by r3.
+typedef void (*ms_lock_t)(int channel);
 #define MS_makeCursorUnmovable    ((ms_lock_t)0x800626EC)
 #define MS_makeCursorMovable      ((ms_lock_t)0x80062674)
 
@@ -102,8 +100,8 @@ typedef void  (*ms_lock_t)(int channel);
 #define MS_DESC_END                                                           \
     0x00, 0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,                         \
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-#define MS_DESC_SIZE     0x20
-#define MS_NO_PARENT     0xFF
+#define MS_DESC_SIZE     sizeof(UIRecordDescriptor)
+#define MS_NO_PARENT     UI_NO_PARENT
 
 /* Build a descriptor list's records on `node` (24 bytes of claimed RAM,
  * zeroed here). Returns the count made. */
@@ -112,13 +110,13 @@ static inline int MS_BuildScene(u32 node, const u8* descriptors)
     int i;
     for (i = 0; i < 24; i += 4)
         VAR_ADDRESS(u32, node + i) = 0;
-    MS_addGraphicsElementToScene(node, descriptors);
+    addGraphicsElementToScene((DrawingSceneStruct*)node, (const UIRecordDescriptor*)descriptors);
     return MS_NODE_COUNT(node);
 }
 
 static inline void MS_RemoveScene(u32 node)
 {
-    MS_removeGraphicsElementFromScene(node);
+    removeGraphicsElementFromScene((DrawingSceneStruct*)node);
 }
 
 /* Lowest and highest pool index among a node's records; 0 if it has none. */
@@ -139,40 +137,40 @@ static inline int MS_SceneIndexRange(u32 node, u32* lo, u32* hi)
 }
 
 // ---- containers: texture slots, texture records, layouts -------------------------
-#define MS_SLOT_TAGS     0x8023D6C0                     // s16 tag per slot, -1 = free
-#define MS_SLOTS         0x803C4BE0
-#define MS_SLOT_COUNT    0x14
-#define MS_SLOT_SIZE     0x3C
+#define MS_SLOT_TAGS     ARRAY_1D_ADDRESS(s16, TEXTURE_SLOT_COUNT, 0x8023D6C0)                  // textureContainerTags (unbound)
+#define MS_SLOTS         ARRAY_1D_ADDRESS(TextureContainerSlot, TEXTURE_SLOT_COUNT, 0x803C4BE0) // textureContainerSlots (unbound)
+#define MS_SLOT_COUNT    TEXTURE_SLOT_COUNT
 
 static inline int MS_SlotOfTag(int tag)
 {
     int s;
     for (s = 0; s < MS_SLOT_COUNT; s++)
-        if (VAR_ADDRESS(s16, MS_SLOT_TAGS + s * 2) == tag)
+        if (MS_SLOT_TAGS[s] == tag)
             return s;
     return -1;
 }
 static inline u32 MS_TextureHeaderOfTag(int tag)
 {
     int s = MS_SlotOfTag(tag);
-    return s < 0 ? 0 : VAR_ADDRESS(u32, MS_SLOTS + s * MS_SLOT_SIZE + 0x34);
+    return s < 0 ? 0 : (u32)MS_SLOTS[s].textures;
 }
 static inline u32 MS_LayoutOfTag(int tag)
 {
     int s = MS_SlotOfTag(tag);
-    return s < 0 ? 0 : VAR_ADDRESS(u32, MS_SLOTS + s * MS_SLOT_SIZE + 0x38);
+    return s < 0 ? 0 : (u32)MS_SLOTS[s].layout;
 }
 
-#define MS_TEX_COUNT(hdr)      VAR_ADDRESS(u16, (hdr))
-#define MS_TEX(hdr, i)         ((hdr) + (i) * 0x20)
-#define MS_TEX_INDEX(t)        VAR_ADDRESS(u16, (t) + 0x00)
-#define MS_TEX_DATA(t)         VAR_ADDRESS(u32, (t) + 0x04)
-#define MS_TEX_TLUT(t)         VAR_ADDRESS(u32, (t) + 0x08)
-#define MS_TEX_H(t)            VAR_ADDRESS(u16, (t) + 0x0C)
-#define MS_TEX_W(t)            VAR_ADDRESS(u16, (t) + 0x0E)
-#define MS_TEX_FMT(t)          VAR_ADDRESS(u8,  (t) + 0x1B)
-#define MS_TEX_TLUT_N(t)       VAR_ADDRESS(u16, (t) + 0x1C)
-#define MS_TEX_TLUT_FMT(t)     VAR_ADDRESS(u8,  (t) + 0x1E)
+#define MS_TEX_COUNT(hdr)      (((TextureHeader*)(hdr))->count)
+#define MS_TEX(hdr, i)         ((hdr) + (i) * sizeof(TextureRecord))
+#define MS_TEXREC(t)           ((TextureRecord*)(t))
+#define MS_TEX_INDEX(t)        (MS_TEXREC(t)->index)
+#define MS_TEX_DATA(t)         (MS_TEXREC(t)->pixels)
+#define MS_TEX_TLUT(t)         (MS_TEXREC(t)->tlut)
+#define MS_TEX_H(t)            (MS_TEXREC(t)->height)
+#define MS_TEX_W(t)            (MS_TEXREC(t)->width)
+#define MS_TEX_FMT(t)          (MS_TEXREC(t)->gxFormat)
+#define MS_TEX_TLUT_N(t)       (MS_TEXREC(t)->tlutEntries)
+#define MS_TEX_TLUT_FMT(t)     (MS_TEXREC(t)->tlutFormat)
 
 /* Make texture record `victim` describe the same kind of image as `model`
  * but with pixels/palette from `data`/`tlut` (32-byte-aligned, in the mod's
@@ -181,10 +179,10 @@ static inline void MS_RetargetTexture(u32 hdr, int victim, int model, const void
 {
     u32 dst = MS_TEX(hdr, victim), src = MS_TEX(hdr, model);
     u16 index = MS_TEX_INDEX(dst);
-    MS_memcpy((void*)dst, (void*)src, 0x20);
+    memcpy((void*)dst, (void*)src, sizeof(TextureRecord));
     MS_TEX_INDEX(dst) = index;
-    MS_TEX_DATA(dst)  = (u32)data;
-    MS_TEX_TLUT(dst)  = (u32)tlut;
+    MS_TEX_DATA(dst)  = (void*)data;
+    MS_TEX_TLUT(dst)  = (void*)tlut;
 }
 
 #define MS_LAYOUT_ELEMS(l)     VAR_ADDRESS(u32, (l) + 8)
@@ -241,7 +239,7 @@ static inline u32 MS_CopyRecord(u32 src, u32 parent)
     u32 dst = MS_FirstFreeRecord();
     if (dst == 0)
         return 0;
-    MS_memcpy((void*)dst, (void*)src, MS_REC_SIZE);
+    memcpy((void*)dst, (void*)src, MS_REC_SIZE);
     MS_CHILD(dst)    = 0;
     MS_ATTACHED(dst) = 0;
     MS_PARENT(dst)   = parent;
@@ -309,9 +307,9 @@ static inline int MS_StopAt(u32 rec, u32 end)
 // ---- the UI draw pass ------------------------------------------------------------
 // Always restore; a watchdog that restores when the screen is no longer
 // current is the pattern (Options Menu.c, Online Menu.c).
-#define MS_DRAW_START    VAR_ADDRESS(u32, 0x803CBC98)
-#define MS_DRAW_END      VAR_ADDRESS(u32, 0x803CB814)
-#define MS_DRAW_END_MAX  0x360
+#define MS_DRAW_START    VAR_ADDRESS(u32, 0x803CBC98)   // uiDrawLoopStart (unbound extern)
+#define MS_DRAW_END      VAR_ADDRESS(u32, 0x803CB814)   // uiDrawLoopEnd
+#define MS_DRAW_END_MAX  UI_RECORD_COUNT
 
 static inline void MS_NarrowDraw(u32 lo, u32 hi, u32* savedStart, u32* savedEnd)
 {
@@ -319,6 +317,11 @@ static inline void MS_NarrowDraw(u32 lo, u32 hi, u32* savedStart, u32* savedEnd)
     *savedEnd   = MS_DRAW_END;
     MS_DRAW_START = lo;
     MS_DRAW_END   = hi + 1;
+}
+/* Draw no records at all; the text pass still runs. */
+static inline void MS_BlankDraw(u32* savedStart, u32* savedEnd)
+{
+    MS_NarrowDraw(0, (u32)-1, savedStart, savedEnd);
 }
 static inline void MS_RestoreDraw(u32 savedStart, u32 savedEnd)
 {
@@ -330,19 +333,35 @@ static inline void MS_RestoreDraw(u32 savedStart, u32 savedEnd)
 }
 
 // ---- the menu control block -----------------------------------------------------
-#define MS_MENU_CTRL         VAR_ADDRESS(u32, 0x803CBBCC)
-#define MS_SCREEN_CODE       VAR_ADDRESS(u16, MS_MENU_CTRL + 2)
-#define MS_MENU_PROCESS      VAR_ADDRESS(u16, MS_MENU_CTRL + 4)
-#define MS_PREV_SCREEN       VAR_ADDRESS(u16, MS_MENU_CTRL + 6)
-#define MS_PREV_PROCESS      VAR_ADDRESS(u16, MS_MENU_CTRL + 8)
+#define MS_MENU_CTRL         VAR_ADDRESS(menuControlStruct*, menuControlVariables_ADDR)
+#define MS_SCREEN_CODE       (MS_MENU_CTRL->currentScreen)
+#define MS_MENU_PROCESS      (MS_MENU_CTRL->currentState)    // zeroed on every screen change
+#define MS_PREV_SCREEN       (MS_MENU_CTRL->previousScreen)
+#define MS_PREV_PROCESS      (MS_MENU_CTRL->previousState)
 #define MS_SCREEN_MAIN_MENU  5
 #define MS_SCREEN_OPTIONS    6
-#define MS_changeScreenVariables ((int (*)(int))0x80640234)
 
 static inline int MS_MenuCtrlValid(void)
 {
-    u32 c = MS_MENU_CTRL;
+    u32 c = (u32)MS_MENU_CTRL;
     return c >= 0x80000000 && c < 0x81800000;
+}
+
+/* 1 when `screenCode` is no longer the current screen (or there is no menu
+ * control block): the scene was left by a route its own code never saw. */
+static inline int MS_ScreenLeft(u16 screenCode)
+{
+    return !MS_MenuCtrlValid() || MS_SCREEN_CODE != screenCode;
+}
+
+/* The MSSB_ALWAYS safety net: run `onExit` once the screen has been left.
+ * Returns 1 when it fired. */
+static inline int MS_ScreenWatchdog(u16 screenCode, void (*onExit)(void))
+{
+    if (!MS_ScreenLeft(screenCode))
+        return 0;
+    onExit();
+    return 1;
 }
 
 /* Go back to the main menu the way an Options exit does: mainMenuScreen only

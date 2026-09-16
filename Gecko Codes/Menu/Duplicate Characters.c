@@ -6,6 +6,9 @@
 // The taken table, patch sites and the captain re-mark bug: docs/duplicate_characters.md
 #include "Include/game/UnknownHomes_Game.h"
 #include "Include/static/UnknownHomes_Static.h"
+#include "Include/menus/yd_step.h"
+#include "Include/Symbols/dol.h"
+#include "Include/Rio/PatchTable.h"
 
 #define TAKEN_TABLE   0x803530F7    // Static_Stats_Tables + 0x4757, 54 bytes
 #define TAKEN_COUNT   54            // 0x35 + 1, one byte per character id
@@ -15,7 +18,7 @@
 #define CAPTAIN_B     0x803C672F    // cursorPositions + 0x0B
 
 // menuCtrl->screenCode: 9 = captainSelect, 10 = teamSelect (the draft)
-#define MENU_SCREEN   (*(u16*)(*(u32*)0x803CBBCC + 2))
+#define MENU_SCREEN   (VAR_ADDRESS(menuControlStruct*, menuControlVariables_ADDR)->currentScreen)
 #define SCREEN_CAPTAIN_SELECT 9
 #define SCREEN_TEAM_SELECT    10
 
@@ -23,9 +26,7 @@
 #define CMPWI_R0_FF   0x2C0000FF    // cmpwi r0, 0xFF   (0xFF = "empty slot")
 
 // (site, original, patched); the REL originals differ from their DOL counterparts
-typedef struct { u32 addr; u32 orig; u32 patched; } CodePatch;
-
-static const CodePatch PATCHES[] = {
+static const RioPatch PATCHES[] = {
     /* --- main.dol: addRemoveCharVariantRelated, five stb sites -------- */
     { 0x80067BAC, 0x98A34757, NOP },          /* stb r5, 0x4757(r3) */
     { 0x80067BC8, 0x98A34757, NOP },
@@ -41,7 +42,6 @@ static const CodePatch PATCHES[] = {
     { 0x806553F8, 0x7C1EF92E, NOP },          /* stwx r0, r30, r31 */
     { 0x806553D4, 0x7C030000, CMPWI_R0_FF },  /* cmpw r3, r0 */
 };
-#define N_PATCHES ((int)(sizeof(PATCHES) / sizeof(PATCHES[0])))
 
 CGECKO(DuplicateCharacters, .state = MSSB_MENU,
        .notes = "Allows you to draft any character as many times as you want.\n"
@@ -53,15 +53,7 @@ void DuplicateCharacters()
     int i;
     u8  cap;
 
-    for (i = 0; i < N_PATCHES; i++)
-    {
-        if (on)
-            PatchInstruction_Conditional(PATCHES[i].addr, PATCHES[i].orig,
-                                         PATCHES[i].patched);
-        else
-            PatchInstruction_Conditional(PATCHES[i].addr, PATCHES[i].patched,
-                                         PATCHES[i].orig);
-    }
+    RioPatch_Apply(PATCHES, RIO_PATCH_COUNT(PATCHES), on);
 
     if (!on)
         return;

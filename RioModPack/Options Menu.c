@@ -17,16 +17,13 @@
 #define ScreenText_FrameNow g_frame
 
 #include "Include/Rio/ScreenList.h"
+#include "Include/Rio/MenuScene.h"
 
 #include "RioModPack/ModOptions.h"
 #include "RioModPack/MusicConfig.h"
 #include "Include/static/UnknownHomes_Static.h"
-#include "Include/menus/yd_step.h"
 #include "Include/text/text_channel.h"
-#include "Include/Symbols/dol.h"          // menuControlVariables_ADDR
 #include "RioModPack/OnlineMenu.h"       // ONLINE_SCREEN_CODE, for the watchdog
-// By raw address: the menus symbol header would bind this file to MENU context.
-#define changeScreenVariables ((int (*)(int))0x80640234)
 
 // Mutable state lives at claimed-RAM addresses, never in payload statics.
 #define g_magic VAR_ADDRESS(u32, 0x802EC308)
@@ -39,40 +36,30 @@
 #define s_music  ((ScreenList*)0x802EB530)          // 16 bytes
 
 // ---- BACKGROUND -----------------------------------------------------------
-#define UI_DRAW_END      VAR_ADDRESS(u32, 0x803CB814)  // element loop end (864)
 #define NOTHING_SAVED    0xFFFFFFFF
 
-#define g_savedDrawEnd  VAR_ADDRESS(u32, 0x802EB000)
-#define g_bgMagic       VAR_ADDRESS(u32, 0x802EB004)
+#define g_savedDrawEnd   VAR_ADDRESS(u32, 0x802EB000)
+#define g_bgMagic        VAR_ADDRESS(u32, 0x802EB004)
+#define g_savedDrawStart VAR_ADDRESS(u32, 0x802EB008)
 #define BG_MAGIC        0x0B6D0FF
 
 /* Blank everything the menu framework draws, keeping the text pass. */
 static void BlankBackground(void)
 {
-    if (g_savedDrawEnd == NOTHING_SAVED && UI_DRAW_END != 0)
-    {
-        g_savedDrawEnd = UI_DRAW_END;    /* only ever saves the real bound */
-        UI_DRAW_END    = 0;
-    }
+    if (g_savedDrawEnd == NOTHING_SAVED && MS_DRAW_END != 0)
+        MS_BlankDraw(&g_savedDrawStart, &g_savedDrawEnd);   /* only ever saves the real bound */
 }
 
 /* Give the framework its screen back. Safe to call when nothing is saved. */
 static void RestoreBackground(void)
 {
-    u32 saved = g_savedDrawEnd;
-
-    if (saved != NOTHING_SAVED && saved != 0 && saved <= 0x360)
-        UI_DRAW_END = saved;
+    MS_RestoreDraw(g_savedDrawStart, g_savedDrawEnd);   /* NOTHING_SAVED is out of range: no write */
     g_savedDrawEnd = NOTHING_SAVED;
 }
 
-// menuCtrl->menuProcess: zeroed on every screen change, so 0 == first frame of this entry.
-#define menuProcess VAR_ADDRESS(u16, VAR_ADDRESS(u32, menuControlVariables_ADDR) + 4)
-
 // ---- layout (the full 4:3 frame) ------------------------------------------
 #define OPT_VISIBLE_ROWS 5
-#define OPT_CURSOR_X    32
-#define OPT_LABEL_X     52
+#define OPT_CURSOR_X    32                  // labels at + LIST_CURSOR_WIDTH
 #define OPT_VALUE_X    250
 #define OPT_TOP_Y      108
 #define OPT_ROW_H       34
@@ -197,9 +184,9 @@ void OptionsMenu()
         ModOptions_Reset();
     }
 
-    if (menuProcess == 0)               // first frame of this entry
+    if (MS_MENU_PROCESS == 0)           // first frame of this entry
     {
-        menuProcess = 1;
+        MS_MENU_PROCESS = 1;
         BlankBackground();
         ScreenList_Init(s_list, OPT_COUNT, OPT_VISIBLE_ROWS);
         g_page = PAGE_OPTIONS;          // always open on the options list
@@ -244,16 +231,12 @@ void OptionsMenu()
         for (i = first; i < last; i++)
         {
             int  y   = MUSIC_TOP_Y + (i - first) * MUSIC_ROW_H;
-            bool sel = (i == s_music->selected);
             u32  trk = MusicSlotTrack(i);
 
             // Red = configured, but that file is not on this disc (only an ini code can do that).
             u32 live = (trk == MUSIC_DEFAULT) || MusicTrackAvailable(i, trk, scratch);
 
-            if (sel)
-                WriteTextEx(OPT_CURSOR_X, y, TEXT_YELLOW, TEXT_SMALL, TEXT_LEFT, ">");
-            WriteTextEx(OPT_LABEL_X, y, sel ? TEXT_YELLOW : TEXT_WHITE,
-                        TEXT_SMALL, TEXT_LEFT, "%s", s_musicSlotLabel[i]);
+            ScreenList_DrawRow(s_music, i, OPT_CURSOR_X, y, TEXT_SMALL, s_musicSlotLabel[i]);
             WriteTextEx(MUSIC_TRACK_X, y,
                         !live ? TEXT_RED
                               : (trk == MUSIC_DEFAULT || trk == MUSIC_OFF) ? TEXT_GRAY
@@ -304,13 +287,9 @@ void OptionsMenu()
     for (i = first; i < last; i++)
     {
         int  y   = OPT_TOP_Y + (i - first) * OPT_ROW_H;
-        bool sel = (i == s_list->selected);
         bool on  = (*(u32*)s_options[i].addr != 0);
 
-        if (sel)
-            WriteTextEx(OPT_CURSOR_X, y, TEXT_YELLOW, TEXT_SMALL, TEXT_LEFT, ">");
-        WriteTextEx(OPT_LABEL_X, y, sel ? TEXT_YELLOW : TEXT_WHITE,
-                    TEXT_SMALL, TEXT_LEFT, "%s", s_options[i].label);
+        ScreenList_DrawRow(s_list, i, OPT_CURSOR_X, y, TEXT_SMALL, s_options[i].label);
         if (s_options[i].page != PAGE_OPTIONS)
             WriteTextEx(OPT_VALUE_X, y, TEXT_GRAY, TEXT_SMALL, TEXT_LEFT, "SET");
         else
@@ -326,11 +305,16 @@ void OptionsMenu()
 
 // Safety net: un-blank the UI if the Options screen is left by any route but B.
 // MSSB_ALWAYS because the blanked variable is main.dol state shared with the match.
+static void OptionsScreenLeft(void)
+{
+    RestoreBackground();
+    g_frame++;                           // ...and release our text blocks too
+    ScreenTextTick();
+}
+
 CGECKO(OptionsMenuRestore, .state = MSSB_ALWAYS);
 void OptionsMenuRestore()
 {
-    u32 ctrl;
-
     if (g_bgMagic != BG_MAGIC)          // one-shot, before any restore can run
     {
         g_bgMagic      = BG_MAGIC;
@@ -340,14 +324,8 @@ void OptionsMenuRestore()
     if (g_savedDrawEnd == NOTHING_SAVED) // nothing blanked -- the common case
         return;
 
-    ctrl = VAR_ADDRESS(u32, menuControlVariables_ADDR);
-    if (ctrl < 0x80000000 || ctrl >= 0x81800000)
+    if (!MS_MenuCtrlValid())
         return;                          // no menu control struct yet (boot)
-    if (VAR_ADDRESS(u16, ctrl + 2) != 6 && // screenCode -- we are not the screen
-        VAR_ADDRESS(u16, ctrl + 2) != ONLINE_SCREEN_CODE) // ...nor the Online one, which blanks the same way
-    {
-        RestoreBackground();
-        g_frame++;                       // ...and release our text blocks too
-        ScreenTextTick();
-    }
+    if (MS_SCREEN_CODE != ONLINE_SCREEN_CODE)   // the Online screen blanks the same way
+        MS_ScreenWatchdog(MS_SCREEN_OPTIONS, OptionsScreenLeft);
 }

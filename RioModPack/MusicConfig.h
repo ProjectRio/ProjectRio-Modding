@@ -14,6 +14,7 @@
 
 #include "CGecko/Common.h"
 #include "Include/types.h"
+#include "Include/Rio/DiscFst.h"
 
 // ---- tracks ---------------------------------------------------------------
 // The order here IS the order the Options menu steps through; bump
@@ -93,8 +94,7 @@ static const char* const s_musicTrackLabel[MUSIC_TRACK_COUNT] =
 };
 
 // ---- disc lookup ----------------------------------------------------------
-#define MusicPathToEntrynum ((s32 (*)(const char*))0x8007791C)  // DVDConvertPathToEntrynum
-#define MUSIC_STREAM_TABLE  0x800E87B4                          // 16 bytes per stream id
+#define MUSIC_STREAM_TABLE  0x800E87B4                          // streamDescriptors (unbound extern)
 #define MUSIC_STREAM_COUNT  15
 
 static void MusicBuildPath(u32 track, char* out)
@@ -123,25 +123,6 @@ static void MusicBuildPath(u32 track, char* out)
     }
 }
 
-/* The file's length, or 0 when it is not on this disc. */
-static u32 MusicProbePath(const char* path)
-{
-    u8* fst = *(u8**)0x80000038;                     /* BootInfo->FSTLocation */
-    s32 e;
-    u8* entry;
-
-    if (fst == 0)
-        return 0;
-    e = MusicPathToEntrynum(path);
-    if (e < 0 || (u32)e >= *(u32*)(fst + 8))
-        return 0;
-
-    entry = fst + (u32)e * 12;
-    if (*entry != 0)                                 /* a directory of that name */
-        return 0;
-    return *(u32*)(entry + 8);
-}
-
 static u32 MusicTrackAvailable(u32 slot, u32 track, char* scratch)
 {
     if (track == MUSIC_DEFAULT || track == MUSIC_OFF || MUSIC_IS_STOCK(track))
@@ -151,7 +132,7 @@ static u32 MusicTrackAvailable(u32 slot, u32 track, char* scratch)
     if (!MUSIC_IS_STAR(track) && !MUSIC_IS_CUSTOM(track))
         return 0;                                    /* out of range */
     MusicBuildPath(track, scratch);
-    return MusicProbePath(scratch) != 0;
+    return Fst_ProbePath(scratch) > 0;
 }
 
 /* Next selectable track in `dir`, wrapping; skips tracks whose file is absent. */

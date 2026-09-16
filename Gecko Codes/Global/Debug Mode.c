@@ -8,6 +8,10 @@
 
 #include "Include/text/text_channel.h"
 #include "Include/musyx/musyx.h"
+#include "Include/Unknown/File_0x800b0a14.h"
+#include "Include/Dolphin/OS/OSCache.h"
+#include "Include/Rio/RelTable.h"
+#include "Include/Rio/PatchTable.h"
 
 // claimed RAM, see ClaimedFreeMemory.h
 #define TEXT_SLOTS      17            // rowsPerPage (16) + a cursor marker; fewer makes the cursor walk off the page
@@ -18,8 +22,8 @@
 #define g_menuState     VAR_ADDRESS(u32, 0x802EC8BC)  // captured fn_80048BEC arg
 
 #define g_loadedModuleId    VAR_ADDRESS(u32, 0x8063EFC0)   // 1 = debug.rel
-#define DRAW_BANK_0         0x803C7A24
-#define g_currentBankIndex  VAR_ADDRESS(u16, 0x803CC1B0)
+// bank heads are two DrawingSceneStructs apart in DSS_Head1
+#define DRAW_BANK_NODE(idx) ((u32)&DSS_Head1[0] + (u32)(idx) * 0x80)
 #define DEBUG_SELECTOR_FN   0x80640734
 
 // entry 6, the Sound Test (rep_02A8)
@@ -159,7 +163,7 @@ static int DebugList(int slot, int x, int y, int step, const char* list, s32 sel
 // running `fn`; a scene's own node is not the bank head.
 static u32 FindSceneNode(u32 fn)
 {
-    u32 node = DRAW_BANK_0 + (u32)g_currentBankIndex * 0x80;
+    u32 node = DRAW_BANK_NODE(DrawingStructArray_Count2);
     int i;
 
     for (i = 0; i < 16; i++)
@@ -179,9 +183,7 @@ CGECKO(load_debug_rel_over_menus, .state = MSSB_ALWAYS,
                 "instead of the main menu, with on-screen text added so it can be read.");
 void load_debug_rel_over_menus(void)
 {
-    VAR_ADDRESS(u32, 0x800E8AAC) = 0x4005912C; // flag | decompressed size
-    VAR_ADDRESS(u32, 0x800E8AB0) = 0x00150000; // offset in aaaa.dat
-    VAR_ADDRESS(u32, 0x800E8AB4) = 0x000271C0; // compressed size
+    RelTable_PointMenuSlotAtDebugRel();
 }
 
 // 2. Capture the compiled-out menu renderer's argument (r0 is dead at entry).
@@ -203,9 +205,9 @@ void debug_menu_text(void)
     u8* items;
     int slot;
 
-    if (g_loadedModuleId != 1 || g_currentBankIndex > 2)
+    if (g_loadedModuleId != 1 || DrawingStructArray_Count2 > 2)
         return;
-    node = DRAW_BANK_0 + (u32)g_currentBankIndex * 0x80;
+    node = DRAW_BANK_NODE(DrawingStructArray_Count2);
 
     for (i = 0; i < TEXT_SLOTS; i++)          // release last frame's lines
         screenTextArray.blocks[TEXT_FIRST + i].state = 0;
@@ -412,33 +414,23 @@ void skn_null_guard(void)
 #define ENTRY1_ELEM_STORE   (DEBUG_TEXT_BASE + 0x9B6C)
 #define ENTRY1_PHASE_STORE  (DEBUG_TEXT_BASE + 0x9B80)
 #define ENTRY1_LOOP_CMP     (DEBUG_TEXT_BASE + 0x9B8C)
-#define DCFlushRange        ((void (*)(u32, u32))0x8006E894)
-#define ICInvalidateRange   ((void (*)(u32, u32))0x8006E94C)
 
-// Writes `fixed` only over the exact instruction it expects to replace.
-static int PatchWord(u32 addr, u32 orig, u32 fixed)
-{
-    if (VAR_ADDRESS(u32, addr) != orig)
-        return 0;                     // already patched, or not debug.rel's code
-    VAR_ADDRESS(u32, addr) = fixed;
-    return 1;
-}
+static const RioPatch ENTRY1_PATCHES[] = {
+    { ENTRY1_ELEM_STORE,  0x80630000, 0x93BF0024 },
+    { ENTRY1_PHASE_STORE, 0xB0030010, 0xB01D0010 },
+    { ENTRY1_LOOP_CMP,    0x2C04000B, 0x2C04000A },
+};
 
 CGECKO(debug_rel_code_patches, .state = MSSB_ALWAYS);
 void debug_rel_code_patches(void)
 {
-    int wrote;
-
     if (g_loadedModuleId != 1)
         return;
-    wrote  = PatchWord(ENTRY1_ELEM_STORE,  0x80630000, 0x93BF0024);
-    wrote += PatchWord(ENTRY1_PHASE_STORE, 0xB0030010, 0xB01D0010);
-    wrote += PatchWord(ENTRY1_LOOP_CMP,    0x2C04000B, 0x2C04000A);
-    if (wrote)
+    if (RioPatch_Apply(ENTRY1_PATCHES, RIO_PATCH_COUNT(ENTRY1_PATCHES), true))
     {
         // self-modifying code: one 64-byte range covers both cache lines
-        DCFlushRange(ENTRY1_ELEM_STORE & ~31, 64);
-        ICInvalidateRange(ENTRY1_ELEM_STORE & ~31, 64);
+        DCFlushRange((void*)(ENTRY1_ELEM_STORE & ~31), 64);
+        ICInvalidateRange((void*)(ENTRY1_ELEM_STORE & ~31), 64);
     }
 }
 

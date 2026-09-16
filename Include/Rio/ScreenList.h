@@ -63,6 +63,21 @@ static void ScreenList_MoveUp(ScreenList* list)
     ScreenList_ScrollToSelection(list);
 }
 
+/* One row of a list the caller lays out itself: the cursor (when selected)
+ * at x and the label at x + LIST_CURSOR_WIDTH. Returns whether row `i` is
+ * the selected one, for the caller's own columns. */
+static bool ScreenList_DrawRow(ScreenList* list, int i, int x, int y, int style,
+                               const char* label)
+{
+    bool isSelected = (i == list->selected);
+
+    if (isSelected)
+        WriteTextEx(x, y, TEXT_YELLOW, style, TEXT_LEFT, ">");
+    WriteTextEx(x + LIST_CURSOR_WIDTH, y, isSelected ? TEXT_YELLOW : TEXT_WHITE,
+                style, TEXT_LEFT, "%s", label);
+    return isSelected;
+}
+
 static void ScreenList_Draw(ScreenList* list, int x, int y, int rowSpacing,
                             int style, const char* const* labels)
 {

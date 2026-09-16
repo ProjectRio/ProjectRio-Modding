@@ -7,6 +7,7 @@
 #include "Include/game/UnknownHomes_Game.h"
 
 #include "Include/static/UnknownHomes_Static.h"
+#include "Include/Unknown/File_0x800b0a14.h"
 // TEMPORARY: consumed by current Rio client versions for autogolf mode.
 #define autogolf_ports ARRAY_1D_ADDRESS(u8, 2, 0x802EBF94)
 
@@ -130,7 +131,6 @@ void TeamsExhibition()
  Section 2: HUD port icons (draw_ongoingStarGuageHud)
 -----------------------------------------------------------*/
 
-#define hud_manager    VAR_ADDRESS(u8*, 0x803CC1B8)
 #define hud_slot_table 0x80371C30
 
 CGECKO(TeamsPortIcons_Ongoing, .address = 0x806D8EC0, .state = MSSB_GAME,
@@ -141,7 +141,7 @@ void TeamsPortIcons_Ongoing()
     if (!GetActivePorts(&fielder_port, &batter_port))
         return;
 
-    u8* mgr = hud_manager;
+    u8* mgr = (u8*)currentDrawingItem;
     if (!mgr)
         return;
     int idx = *(u16*)(mgr + 0x14);
