@@ -5,6 +5,8 @@
 
 # Address: 0x8069811c
 # State: Game
+# *Infielders no longer charge in automatically on a bunt.
+# *The fielding player must press Z to bring them in.
 
 ###########################################################
 ###########################################################

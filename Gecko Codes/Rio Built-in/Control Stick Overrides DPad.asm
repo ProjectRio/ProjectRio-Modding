@@ -4,6 +4,7 @@
 # Author: LittleCoaks
 
 # Address: 0x800A59FC
+# *While the control stick is pushed, D-pad input is ignored.
 
 ###########################################################
 ###########################################################

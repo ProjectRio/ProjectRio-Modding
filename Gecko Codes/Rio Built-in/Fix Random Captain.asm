@@ -5,7 +5,7 @@
 
 # Address: 0x8063F7C4
 # State: Menu
-# *Properly seeds the rng seed which determines the random captain
+# *Makes the random captain pick truly random.
 
 ###########################################################
 ###########################################################

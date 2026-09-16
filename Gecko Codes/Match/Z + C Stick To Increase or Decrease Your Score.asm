@@ -7,7 +7,7 @@
 # State: Game
 
 # *Z + Cstick UP to increase your score
-# *Z + Cstick UP to decrease your score
+# *Z + Cstick DOWN to decrease your score
 
 
 ###########################################################

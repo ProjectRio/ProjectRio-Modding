@@ -5,6 +5,7 @@
 
 # Address: 0x806B406C
 # State: Game
+# *Stops the pitcher from starting a pitch while the batter is still getting set.
 
 ###########################################################
 ###########################################################

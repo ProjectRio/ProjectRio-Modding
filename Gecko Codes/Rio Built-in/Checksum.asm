@@ -4,15 +4,12 @@
 # Author: LittleCoaks
 
 # Address: 0x8000928c
+# *Netplay sync check: sums up game state so Rio can confirm every player's game agrees.
 
 ###########################################################
 ###########################################################
 
-# this checksum will check a few variables and make sure that they're the same between clients on netplay
-# if they all are, we can safely assume that the client's game's are in sync
-# 0x802EBFB8 - checksum address
-
-# TODO: Finish the transition to using the Common.s macros
+# what goes into the sum, and where it lands: docs/netplay_checksum.md
 
 .include "Common.s"
 

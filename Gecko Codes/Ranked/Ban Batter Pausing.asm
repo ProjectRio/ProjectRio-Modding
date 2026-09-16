@@ -5,6 +5,7 @@
 
 # Address: 0x806EED5C
 # State: Game
+# *The batter can only pause while standing still in the batter's box.
 
 ###########################################################
 ###########################################################

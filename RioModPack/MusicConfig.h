@@ -3,35 +3,11 @@
 ###########################################################*/
 // Author: LittleCoaks
 //
-// Shared by the mod that PLAYS the music ("RioModPack/Custom Music.c") and the
-// UI that CONFIGURES it ("RioModPack/Options Menu.c"), so the two can never
-// disagree about what track 19 is. Both are pack files, which is why this sits
-// beside them rather than in Include/Rio/ with the general-purpose headers.
-//
-// Everything here is `static`: the pack is one translation unit, so there is
-// exactly one copy, and a file that includes this on its own still builds.
-//
-// EIGHT SLOTS. One for the menu, one per stadium. A slot holds a TRACK id (see
-// below); 0 = MUSIC_DEFAULT means "leave the game's own music alone", which is
-// what every slot reads as after ModOptions_Reset().
-//
-// HOW A SLOT IS APPLIED (the mod's half, summarised here because it explains
-// the track numbering):
-//   * Stadium slots retarget the game's own stream descriptor. Each stream id
-//     has a 16-byte entry at STREAM_TABLE holding {char* path, u32 size, ...},
-//     and the path is resolved through the disc FST at RUNTIME -- so pointing
-//     Mario Stadium's entry at another track's path is enough to change what
-//     the game plays when it asks for its own stadium music. Nothing is
-//     intercepted; the game plays the file the descriptor names.
-//   * The menu slot cannot use that trick, because the menu music is a Musyx FX
-//     rather than a stream. It borrows one descriptor and starts a stream by
-//     hand -- see the mod.
-//
-// A MISSING FILE IS NEVER SELECTABLE. MusicTrackStep() skips any track whose
-// file is not on this disc, so a custom slot with nothing behind it cannot be
-// chosen in the first place, and the mod probes again before it commits to
-// anything. Both halves check because the config is plain RAM: a value can also
-// arrive from an ini code or a stale byte, not just from the menu.
+// Shared by Custom Music.c (plays) and Options Menu.c (configures). Sixteen
+// slots of claimed RAM, each holding a track id: MusicSlotTrack(slot) reads
+// one, MusicTrackStep() walks the selectable tracks, MusicTrackAvailable()
+// says whether a track's file is on this disc. Everything is static: the
+// pack is one translation unit. See docs/custom_music.md.
 
 #ifndef MUSICCONFIG_H
 #define MUSICCONFIG_H
@@ -40,42 +16,17 @@
 #include "Include/types.h"
 
 // ---- tracks ---------------------------------------------------------------
-// Track ids are a flat list so the UI can just step through them.
-//   0        leave the game's own music alone
-//   1..15    the game's own streams, track id N -> stream id N-1
-//   16,17    star_01 / star_03: on the disc, unreachable by the stock game
-//   18       Letters: the unused song in ZZZZ.dat (our own MusyX stream, menu only)
-//   19       the Dictionary theme (a Musyx FX, menu only)
-//   20..29   snd/my_snd_h/custom_01_h.adp .. custom_10_h.adp
-//   30       Off: no music at all
-// Grouped by provenance: the game's own streams, then what ships on the disc
-// but the stock game never plays, then the user's own files, then Off -- which
-// also puts Off one step from Default across the wrap.
-// The order here IS the order the Options menu steps through. Slot words hold
-// these ids, so renumbering re-points a configured slot -- which is why
-// MUSICCFG_MAGIC is bumped with every renumbering: a stale config from an older
-// layout re-initialises to Default instead of being trusted.
+// The order here IS the order the Options menu steps through; bump
+// MUSICCFG_MAGIC on any renumbering.
 #define MUSIC_DEFAULT        0
 #define MUSIC_STOCK_FIRST    1
 #define MUSIC_STOCK_COUNT   15
 #define MUSIC_STAR_FIRST    16
 #define MUSIC_STAR_COUNT     2
-// The unused "Letters" song hiding in ZZZZ.dat. Not a stream descriptor: it is
-// DSP-ADPCM played through MusyX's own stream engine, revived by
-// RioModPack/LettersStream.h. Menu slot only, like the Dictionary theme -- a
-// match's stadium track is hardware DTK that would have to be cancelled, and
-// its SFX would compete for the voice.
 #define MUSIC_LETTERS       18
-// The Dictionary scene's theme. NOT a stream -- it is a Musyx FX layer, so it
-// is the one track that cannot be reached by retargeting a descriptor, and the
-// one track a stadium slot cannot use. See MusicTrackAvailable().
 #define MUSIC_DICTIONARY    19
 #define MUSIC_CUSTOM_FIRST  20
 #define MUSIC_CUSTOM_COUNT  10
-// No music. On a stadium slot the descriptor is pointed at a path that is not
-// on the disc: jukeboxPlay bails out when DVDFastOpen fails (0x800A8E74), so
-// nothing is queued or prepared and the match is simply silent. On the menu
-// slot the Musyx theme is stopped and nothing is started in its place.
 #define MUSIC_OFF           30
 #define MUSIC_TRACK_COUNT   31
 
@@ -85,11 +36,6 @@
 #define MUSIC_IS_CUSTOM(t) ((t) >= MUSIC_CUSTOM_FIRST && (t) < MUSIC_CUSTOM_FIRST + MUSIC_CUSTOM_COUNT)
 
 // ---- slots ----------------------------------------------------------------
-// Slot 0 is the menu. Slots 1..15 are EVERY streamed track the game has, one
-// per stream id -- not just the stadiums. They all work the same way (retarget
-// a descriptor), so there is no reason to offer only some of them: the replay,
-// results, victory and challenge tracks are swappable for exactly the same
-// cost as Mario Stadium.
 #define MUSIC_SLOT_MENU    0
 #define MUSIC_SLOT_COUNT   16
 
@@ -97,21 +43,12 @@
 #define MUSICCFG_BASE      0x802EB540    // 16 words, one per slot
 #define MUSIC_PATHBUF_BASE 0x802EB610    // 15 x 32 bytes, one per stream slot
 #define MUSIC_PATHBUF_SIZE 32
-#define MUSIC_SAVED_BASE   0x802EB590    // 15 x 8 bytes: each stream's stock
-                                         // {path,size}, captured once
+#define MUSIC_SAVED_BASE   0x802EB590    // 15 x 8 bytes: each stream's stock {path,size}
 #define MUSICCFG_MAGIC_ADDR 0x802EB580   // one-shot init sentinel
-#define MUSICCFG_MAGIC     0x4D555334    // 'MUS4' -- bumped with the layout, so
-                                         // a stale sentinel from the 8-slot
-                                         // build re-initialises instead of
-                                         // being trusted
+#define MUSICCFG_MAGIC     0x4D555334    // 'MUS4'
 
 #define MusicSlot(i) (*(volatile u32*)(MUSICCFG_BASE + (i) * 4))
 
-// The stream id each slot drives. Slot 0 (menu) has none -- the menu is not a
-// stream -- so it is parked on 0xFF rather than a real id. Every other slot is
-// simply its own index minus one, but the table stays explicit: it is what
-// pairs a label with an id, and a mistake here would silently retarget the
-// wrong track.
 static const u8 s_musicSlotStream[MUSIC_SLOT_COUNT] =
 {
     0xFF,   /* menu             */
@@ -160,11 +97,6 @@ static const char* const s_musicTrackLabel[MUSIC_TRACK_COUNT] =
 #define MUSIC_STREAM_TABLE  0x800E87B4                          // 16 bytes per stream id
 #define MUSIC_STREAM_COUNT  15
 
-/* Build the disc path for a star/custom track into `out` (>= 32 bytes). The
- * two digits sit at fixed offsets in the template, so one literal covers all
- * ten custom slots. The `_h` suffix is the disc's convention for every
- * streamed track. Stock tracks have no path of their own here -- theirs is
- * read out of the stream table. */
 static void MusicBuildPath(u32 track, char* out)
 {
     const char* src;
@@ -191,12 +123,7 @@ static void MusicBuildPath(u32 track, char* out)
     }
 }
 
-/* The file's length, or 0 when it is not on this disc.
- *
- * Pure RAM work: the FST is resident from DVDInit onwards, so this is safe from
- * a per-frame hook and costs nothing on a miss. FST entries are 12 bytes
- * { u32 isDirAndStringOff; u32 pos; u32 len }, the top byte of the first word
- * marking a directory; entry 0 is the root and its length is the entry count. */
+/* The file's length, or 0 when it is not on this disc. */
 static u32 MusicProbePath(const char* path)
 {
     u8* fst = *(u8**)0x80000038;                     /* BootInfo->FSTLocation */
@@ -215,14 +142,6 @@ static u32 MusicProbePath(const char* path)
     return *(u32*)(entry + 8);
 }
 
-/* Can this slot play this track on this disc?
- *
- * Stock streams always can -- they are what the game itself plays. Star and
- * custom tracks are files that may or may not have been added, so they get
- * looked up. The Dictionary theme is a Musyx FX rather than a stream, driven by
- * the game's own menu-music routine, so ONLY the menu slot can have it: there
- * is no descriptor to retarget for a stadium, and a match does not run that
- * routine at all. */
 static u32 MusicTrackAvailable(u32 slot, u32 track, char* scratch)
 {
     if (track == MUSIC_DEFAULT || track == MUSIC_OFF || MUSIC_IS_STOCK(track))
@@ -235,11 +154,7 @@ static u32 MusicTrackAvailable(u32 slot, u32 track, char* scratch)
     return MusicProbePath(scratch) != 0;
 }
 
-/* Step to the next selectable track, skipping any whose file is absent, so a
- * custom slot with nothing behind it can never be chosen. Wraps both ways.
- * Falls back to MUSIC_DEFAULT if a full lap finds nothing, which cannot happen
- * (Default and the stock streams are always available) but keeps the loop
- * bounded rather than trusting that. */
+/* Next selectable track in `dir`, wrapping; skips tracks whose file is absent. */
 static u32 MusicTrackStep(u32 slot, u32 track, int dir, char* scratch)
 {
     u32 t = (track < MUSIC_TRACK_COUNT) ? track : MUSIC_DEFAULT;
@@ -258,17 +173,13 @@ static u32 MusicTrackStep(u32 slot, u32 track, int dir, char* scratch)
     return MUSIC_DEFAULT;
 }
 
-/* A slot's configured track, clamped. The config is plain RAM, so it can hold
- * a stale word from before this code existed or a value an ini code wrote;
- * anything out of range reads as Default rather than indexing off the end of
- * the label table or asking the jukebox for a stream that does not exist. */
+/* A slot's configured track, clamped: the config is plain RAM. */
 static u32 MusicSlotTrack(u32 slot)
 {
     u32 t = MusicSlot(slot);
     return (t < MUSIC_TRACK_COUNT) ? t : MUSIC_DEFAULT;
 }
 
-/* Zero every slot. Called once per session alongside ModOptions_Reset(). */
 static void MusicConfig_Reset(void)
 {
     volatile u32* cfg = (volatile u32*)MUSICCFG_BASE;

@@ -5,6 +5,7 @@
 
 # Address: 0x8064F67C
 # State: menu
+# *On the team select screen, press Start over a character to make them the captain.
 
 ###########################################################
 ###########################################################

@@ -4,14 +4,10 @@
 # Author: Nuche17
 
 # Address: 0x8005a4f4
+# *Automatically applies superstar status to the marked characters when a
+# *team loads. Meant to be driven by other tools, not turned on by itself.
 
-# Requires: 
-# 1. To determine which characters to superstar, indicators need to be set in the first unused byte for each character in the roster struct.
-# The first indicator byte is at 0x80353be5. This is for the first character on the P1 team. Offset for each character is 0xa0.
-# For the common situation of starring everyone, use this code:
-   # 08353be5 00000001
-   # 001100a0 00000000
-# 2. Two free bytes of memory to store index values to track the progress of the superstarring. Currently using 0x802EBF99 and 0x802EBF9A.
+# Setup requirements (indicator bytes, progress bytes): docs/auto_superstar.md
 
 ###########################################################
 ###########################################################

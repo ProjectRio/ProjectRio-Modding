@@ -4,10 +4,9 @@
 # Author: LittleCoaks
 
 # Address: 0x80049d08
-
-# mercy on for both
-# 9-innings for stars off
-# 5-innings drop spot off for stars on
+# *Sets the competitive defaults on the match settings screen: mercy on;
+# *9 innings with drop spots on when no team has superstars,
+# *5 innings with drop spots off when superstars are used.
 
 
 ###########################################################

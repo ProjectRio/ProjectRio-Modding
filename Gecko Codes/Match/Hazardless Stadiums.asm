@@ -5,6 +5,7 @@
 
 # Address: 0x80699508
 # State: Game
+# *Removes the hazards (chain chomps, tornadoes, barrels, and so on) from every stadium.
 
 ###########################################################
 ###########################################################

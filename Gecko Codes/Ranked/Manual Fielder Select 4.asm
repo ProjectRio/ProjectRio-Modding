@@ -5,6 +5,8 @@
 
 # Address: 0x80678F8C
 # State: Game
+# *R: select the closest fielder to the ball. Y: select the pitcher.
+# *X: select the catcher. Z: undo the selection.
 
 ###########################################################
 ###########################################################

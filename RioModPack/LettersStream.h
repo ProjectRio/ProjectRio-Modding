@@ -3,61 +3,10 @@
 ###########################################################*/
 // Author: LittleCoaks
 //
-// Plays the orphan "Letters" song straight out of ZZZZ.dat on a stock disc, by
-// reviving MusyX's own ADPCM stream engine. Included by Custom Music.c and
-// driven ONLY from its CustomMusic() hook: cgecko links every hook separately,
-// so a static touched from two hooks would exist twice.
-//
-// THE SONG. ZZZZ.dat +0x08f2e808 holds an AdGCForm blob nothing references:
-// 8-byte magic + 0x20 wrapper, a standard 0x60-byte DSP-ADPCM header, then
-// data at +0x88. Mono, 32000 Hz, 9,226,688 samples (4:48, fades out). It is
-// NOT the raw DTK ADP the stadium themes stream as (a DTK block repeats bytes
-// 0/1 at 2/3; this never does), so no stream descriptor can play it -- but it
-// is exactly the sample format MusyX plays, which is what makes this possible.
-//
-// THE ENGINE. streamHandle (0x800C8874) is whole in the retail DOL and runs
-// every few audio frames from hwHandle; only the public setup calls
-// (sndStreamAllocEx / sndStreamActivate / voiceBlock / aramAllocateStreamBuffer)
-// were dead-stripped, so nothing ever hands it a stream and it idles. This
-// file is that setup, transcribed from the decomp: an ARAM ring, a BLOCKED
-// voice, streamInfo[voice] filled in, and the game's own code does the rest.
-// Every struct offset below was checked against the retail disassembly.
-//
-// THE REFILL CONTRACT (read out of streamHandle's state-2 path):
-//   cpos = hwGetPos(voice) rounded down to a whole ADPCM frame;
-//   if (last != cpos) ret = updateFunction(buf1, len1, buf2, len2, user);
-//   last = (last + ret) % size; hwFlushStream(the claimed bytes) -> ARAM.
-// Lengths are SAMPLES, the pointers arrive pre-offset, and a short or zero
-// return is handled cleanly. After each refill the engine reads the ring's
-// byte 0 (uncached) as the loop predictor, so byte 0 must always be a frame
-// header and must never be rewritten ahead of the play head -- see the pump.
-//
-// ZERO-COPY. There is one 8 KB ring, shared: the DVD reads land directly in
-// the region the DSP has already played and the engine has already flushed,
-// and the callback just reports how much of that has arrived. No staging, no
-// memcpy, and only the ring in RAM. Claims are made in 56-sample (32-byte)
-// units so the engine's byte cursor stays 32-byte aligned for the DVD.
-//
-// NOTHING HERE MAY SLEEP. Gecko hooks run with OSCurrentThread == NULL, so any
-// SDK call that parks the caller -- the synchronous DVDReadPrio, DVDCancel --
-// faults writing thread->state (an "Invalid write to 0x000002c8" in
-// OSSleepThread). Every disc operation below is the Async form, polled by the
-// pump, and priming the ring is a phase of its own rather than a blocking read.
-//
-// THE RING is a static array in this image, 32-byte aligned as hwFlushStream
-// and DVDRead require. In the DOL-baked pack that is free: the image already
-// lives in a reserved region (0x817C0000, ~253 KB, a few percent used). In a
-// gecko build it costs 8 KB of zeros in the code list, which is acceptable
-// for a build that is never shipped that way.
-//
-// It was briefly lbl_802ED140, a "discrete 8192-byte .bss object referenced
-// by nothing" -- which turned out to be the RENDER THREAD'S STACK (OSThread
-// 0x803C7488, priority 12: stackEnd 0x802ED140, stackBase 0x802EF140). The
-// priming read overwrote it and the thread returned into garbage. Every
-// reference scan missed it because a stack's only reference is to its END,
-// 0x802EF140, which is the address of the NEXT object. Do not go looking for
-// "free" game RAM for a DMA target by reference-scanning again: dump it live
-// on an unmodded boot (the repo's actual standard) or use the image.
+// Plays the orphan "Letters" song out of ZZZZ.dat through MusyX's own ADPCM
+// stream engine. Include from ONE hook only and call LettersStream_Start(),
+// then LettersStream_Pump() every frame, LettersStream_Stop() to end;
+// LettersStream_Active() covers priming too. See docs/musyx_stream.md.
 #ifndef LETTERSSTREAM_H
 #define LETTERSSTREAM_H
 
@@ -68,8 +17,7 @@
 // ---- the song ----------------------------------------------------------------
 #define LS_SONG_BLOB   0x08F2E808u                 /* within ZZZZ.dat            */
 #define LS_SONG_DATA   (LS_SONG_BLOB + 0x88u)      /* past AdGCForm + .dsp hdr   */
-#define LS_SONG_BYTES  0x507340u                   /* whole frames, 32-aligned:  */
-                                                   /* 5,272,392 floored to 32    */
+#define LS_SONG_BYTES  0x507340u                   /* whole frames, 32-aligned   */
 #define LS_SONG_FRQ    32000u
 
 // ---- the ring ----------------------------------------------------------------
@@ -114,23 +62,21 @@ static u8 s_lsRing[LS_RING_BYTES] __attribute__((aligned(32)));
 #define LS_SV_STRIDE    0x458u
 #define SV_ADDR    0x34     /* MSTEP*                        */
 #define SV_ID      0xF4     /* u32                           */
-#define SV_ALLOCID 0x100    /* u32 -- see LettersVoiceBlock  */
+#define SV_ALLOCID 0x100    /* u32                           */
 #define SV_BLOCK   0x11C    /* u8                            */
 #define SV_FXFLAG  0x11D    /* u8                            */
 
 #define g_lsSynthFlags  VAR_ADDRESS(u32, 0x803CC274)
 #define g_lsVoiceNum    VAR_ADDRESS(u8,  0x8030E7D8)   /* synthInfo + 0x210 */
 
-/* ARAM stream-buffer pool: 64 x {next, aram, length, allocLength}, offsets
-   read back out of aramGetStreamBufferAddress. */
+/* ARAM stream-buffer pool: 64 x {next, aram, length, allocLength} */
 #define LS_ARAM_SB      0x80326938u
 #define LS_ARAM_STRIDE  0x10u
 #define g_lsAramIdle    VAR_ADDRESS(u32, 0x803CC3A8)
 #define g_lsAramUsed    VAR_ADDRESS(u32, 0x803CC3B0)
 #define g_lsAramStream  VAR_ADDRESS(u32, 0x803CC3BC)
 
-/* Retail entry points. Raw pointers with an LS_ prefix so nothing here can
-   collide with the musyx header inlines Custom Music.c already pulls in. */
+/* Retail entry points, LS_-prefixed to stay clear of the musyx header inlines. */
 #define LS_voiceAllocate            ((u32  (*)(u8, u8, u16, u8))0x800D0B00)
 #define LS_voiceUnblock             ((void (*)(u32))0x800D10EC)
 #define LS_vidRemoveVoiceReferences ((void (*)(void*))0x800CFFF8)
@@ -145,41 +91,28 @@ static u8 s_lsRing[LS_RING_BYTES] __attribute__((aligned(32)));
 #define LS_DCInvalidateRange        ((void (*)(void*, u32))0x8006E868)
 #define LS_MAC_STATE_STOPPED        2
 
-/* The song's own .dsp header supplies SNDADPCMinfo verbatim: its 16
-   coefficients (blob +0x44). The initial predictor/scale byte is data[0]. */
+/* The song's own .dsp header coefficients (blob +0x44). */
 static const s16 kLettersCoef[16] = {
     -184,   95, 1855, -724,  783,  609, 2500, -654,
      906, -480, 2398, -799, 1460,  366, 2801, -818
 };
 
 // ---- state (all zero at load; this header's hook is the only writer) --------
-static u8  s_lsPhase;           /* 0 idle, 1 priming (first read in flight),  */
-                                /* 2 running (engine owns the voice)          */
+static u8  s_lsPhase;           /* 0 idle, 1 priming, 2 running               */
 static u8  s_lsVoice;           /* raw voice index = streamInfo index        */
-static u8  s_lsHwbufPlus1;      /* ARAM ring handle + 1; 0 = none yet. Kept   */
-                                /* for the session: the free path was         */
-                                /* stripped and 8 KB of ARAM is nothing.      */
+static u8  s_lsHwbufPlus1;      /* ARAM ring handle + 1; 0 = none yet         */
 static u8  s_lsReadBusy;        /* a DVD read is in flight                    */
 static u32 s_lsReadLen;         /* its length                                 */
 static u32 s_lsFill;            /* ring byte offset the next read lands at    */
 static u32 s_lsSongPos;         /* next song byte to fetch                    */
-static volatile u32 s_lsAvail;  /* fresh bytes ahead of the engine's cursor,  */
-                                /* not yet claimed. Written by the callback   */
-                                /* (audio IRQ) and the pump (main), so the    */
-                                /* pump edits it with IRQs off.               */
+static volatile u32 s_lsAvail;  /* fresh bytes ahead of the engine's cursor;  */
+                                /* shared with the audio IRQ, edit with IRQs off */
 static DVDFileInfo s_lsFile;
 
-/* "Active" covers priming too: the caller keeps the guard held and keeps
-   pumping from the first read onward, and does not try to start again. */
 static u32 LettersStream_Active(void) { return s_lsPhase != 0; }
 
-/* The refill callback, called by streamHandle from the audio interrupt with
-   the region [last, cpos) to fill. Zero-copy: the data is already there (the
-   pump put it there), so this only reports how much, in whole 32-byte units,
-   never more than the contiguous len1 -- so the engine always takes its
-   single-flush path and byte cursors stay aligned. Its address is stored in
-   streamInfo, which needs CGecko >= 70ae670 (before that, &function pointed
-   inside the payload). */
+/* Refill callback, run by streamHandle from the audio interrupt. Zero-copy:
+   reports how much of the ring is already fresh, in whole 32-byte units. */
 static s32 LettersFeed(void* buffer1, u32 len1, void* buffer2, u32 len2, void* user)
 {
     u32 want, have;
@@ -196,9 +129,7 @@ static s32 LettersFeed(void* buffer1, u32 len1, void* buffer2, u32 len2, void* u
     return (s32)((want / 8u) * 14u);          /* bytes -> samples            */
 }
 
-/* Transcription of the stripped aramAllocateStreamBuffer(): the "carve a
-   fresh one off the top" path only -- nothing else allocates these, so the
-   free list is always empty. */
+/* The stripped aramAllocateStreamBuffer(): fresh-carve path only. */
 static s32 LettersAllocAram(u32 len)
 {
     u32 sb;
@@ -217,13 +148,7 @@ static s32 LettersAllocAram(u32 len)
     return (s32)((sb - LS_ARAM_SB) / LS_ARAM_STRIDE);
 }
 
-/* Transcription of the stripped voiceBlock() (synthvoice.c) -- what
-   sndStreamActivate really uses, NOT a bare voiceAllocate. block=1 is what
-   keeps voice stealing from handing this voice to the next SFX; the sentinel
-   id / allocId keep the by-id lookups from ever matching it. voiceAllocate
-   returns the RAW index (or 0xFFFFFFFF); the composite id is written here.
-   allocId is a u32: mcmdPlayMacro loads it with lwz and passes it straight
-   through, which a u16 would never compile to. */
+/* The stripped voiceBlock(): what sndStreamActivate really uses. */
 static u32 LettersVoiceBlock(u8 prio)
 {
     u32 v = LS_voiceAllocate(prio, 0xFF, 0xFFFF, 1);
@@ -245,11 +170,7 @@ static u32 LettersVoiceBlock(u8 prio)
     return v;
 }
 
-/* Stop and release everything but the ARAM ring. Safe to call when idle. A
-   read still in flight is cancelled ASYNCHRONOUSLY and left marked busy: the
-   next Start waits for the command block to go idle before reusing it. The
-   file is never closed -- DVDClose is bookkeeping-free on this SDK and a
-   later DVDOpen simply refills the same DVDFileInfo. */
+/* Stop and release everything but the ARAM ring. Safe to call when idle. */
 static void LettersStream_Stop(void)
 {
     if (s_lsPhase == 0)
@@ -268,8 +189,7 @@ static void LettersStream_Stop(void)
     s_lsAvail = 0;
 }
 
-/* Start from the top of the song: issue the read that primes the whole ring
-   and go to phase 1. The pump finishes the job when that read lands. */
+/* Issue the read that primes the whole ring; the pump finishes the job. */
 static void LettersStream_Start(void)
 {
     if (s_lsPhase != 0)
@@ -284,9 +204,6 @@ static void LettersStream_Start(void)
     if (!DVDOpen("ZZZZ.dat", &s_lsFile))       /* FST lookup only; never sleeps */
         return;
 
-    /* Invalidate first -- hwFlushStream will DCStoreRange this region before
-       its ARAM DMA, and a stale line would write old bytes back over the
-       fresh read. */
     LS_DCInvalidateRange((void*)LS_RING, LS_RING_BYTES);
     if (!DVDReadAsyncPrio(&s_lsFile, (void*)LS_RING, (s32)LS_RING_BYTES,
                           (s32)LS_SONG_DATA, NULL, LS_DVD_PRIO))
@@ -296,10 +213,7 @@ static void LettersStream_Start(void)
     s_lsPhase    = 1;
 }
 
-/* Phase 1 -> 2, once the priming read has landed: everything that has to be
-   in place before the engine's first pass. The engine itself builds the
-   SAMPLE_INFO, starts the voice and flushes the whole ring to ARAM on its
-   next service. */
+/* Phase 1 -> 2, once the priming read has landed. */
 static void LettersStream_Prime(void)
 {
     u8* si;
@@ -310,15 +224,8 @@ static void LettersStream_Prime(void)
 
     s_lsSongPos  = LS_RING_BYTES;
     s_lsFill     = 0;                          /* next read lands at 0, once played */
-    /* NOT LS_RING_BYTES: the engine flushes the primed ring to ARAM itself
-       (state 1), so nothing in it is "fresh, unclaimed" data. Calling it so
-       made the engine re-flush lap 1 as lap 2 -- the first half second played
-       twice -- and threw the pump's accounting off by a lap. Fresh data only
-       exists once the pump has written it behind the play head. */
-    s_lsAvail    = 0;
+    s_lsAvail    = 0;                          /* NOT LS_RING_BYTES: the engine flushes the primed ring itself */
 
-    /* From here the writes race the audio interrupt, where streamHandle runs;
-       sndStreamAllocEx brackets exactly this with hwDisableIrq/hwEnableIrq. */
     LS_hwDisableIrq();
 
     if (s_lsHwbufPlus1 == 0)
@@ -362,9 +269,6 @@ static void LettersStream_Prime(void)
     si[SI_PRIO]   = 0x7F;
     si[SI_STUDIO] = 0;
 
-    /* SetupVolumeAndPan + the inlined CheckOutputMode: keep the requested pan
-       as orgPan/orgSPan, fold the effective one for the output mode (bit0 =
-       mono -> centre, no surround; bit1 clear -> no surround). */
     si[SI_ORGPAN]  = pan;
     si[SI_ORGSPAN] = span;
     if (g_lsSynthFlags & 1)       { pan = 64; span = 0; }
@@ -388,13 +292,7 @@ static void LettersStream_Prime(void)
     LS_hwEnableIrq();
 }
 
-/* Per frame, from the menu. Retires the in-flight read, then issues the next
-   one into the ring's free region: what the DSP has PLAYED (behind hwGetPos)
-   and the engine has CLAIMED (behind the fresh data). Both bounds matter --
-   the play head, because the engine samples the ring's byte 0 as the loop
-   predictor and a frame written there ahead of the wrap would mismatch the
-   ARAM copy the DSP loops into; the claim, because unclaimed bytes are still
-   waiting to be flushed. The song loops. */
+/* Per frame: retire the in-flight read, then read into the ring's free region. */
 static void LettersStream_Pump(void)
 {
     u32 cpos, free, len, avail;
@@ -436,12 +334,7 @@ static void LettersStream_Pump(void)
     if (free > LS_RING_BYTES - avail)
         free = LS_RING_BYTES - avail;                       /* and already claimed  */
     free &= ~31u;
-    /* The floor judges the TOTAL free space, before the contiguity clip
-       below. Judging the clipped length deadlocked: once a read ended 256
-       bytes short of the ring's end, that tail could never reach the floor
-       and never grew, and the engine sat waiting on it forever. A short tail
-       read is fine -- the next frame carries on from offset 0. */
-    if (free < LS_READ_MIN)
+    if (free < LS_READ_MIN)                    /* judged BEFORE the contiguity clip, or a short tail deadlocks */
         return;
 
     len = free;
@@ -452,8 +345,6 @@ static void LettersStream_Pump(void)
     if (len > LS_SONG_BYTES - s_lsSongPos)
         len = LS_SONG_BYTES - s_lsSongPos;
 
-    /* The claimed region's ARAM upload was queued from the audio interrupt;
-       let it drain before the DVD overwrites its source. */
     LS_aramSyncTransferQueue();
     LS_DCInvalidateRange((void*)(LS_RING + s_lsFill), len);
     if (!DVDReadAsyncPrio(&s_lsFile, (void*)(LS_RING + s_lsFill), (s32)len,

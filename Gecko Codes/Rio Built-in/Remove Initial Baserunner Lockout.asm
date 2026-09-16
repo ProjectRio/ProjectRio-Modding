@@ -5,6 +5,7 @@
 
 # Address: 0x806c9d78
 # State: Game
+# *Runners can be controlled right after contact instead of after the usual short lockout.
 
 ###########################################################
 ###########################################################

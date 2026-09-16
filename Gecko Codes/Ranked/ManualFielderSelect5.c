@@ -3,30 +3,17 @@ Manual Fielder Select v5.0
 Author: PeacockSlayer, LittleCoaks
 #########################################################*/
 
-
-// *MECHANICS:
-// *R - closest fielder to ball that's not currently selected
-// *L - undo manual fielder select action
-
-// -------------------------------------------------------------------------
-// STATUS: reference port only -- the SHIPPING code is
-// "Manual Fielder Select 5.asm" in this folder. Keep this one disabled.
-//
-// Why it cannot replace the .asm: the ASM version ends by forcing r0 to 1,
-// which is how it tells the game "I already picked a fielder, don't pick
-// another" (the injection site is `lbz r0, 0x1BD1(r6)` and the game branches
-// on that r0). A C code cannot set r0: cgecko's wrapper does `mflr r0` on
-// entry and `lwz r0 / mtlr r0` on the way out, so it owns r0 across the body
-// (see the Common.h register notes -- WRITE_GAME_REG only reaches r3-r31).
-// So this port re-runs the overwritten load through .instruction and then
-// lets the game choose normally; the selection it makes still lands, but the
-// game is free to override it on the same frame.
-// -------------------------------------------------------------------------
+// Reference port only; the shipping code is "Manual Fielder Select 5.asm".
+// A C hook cannot set r0 (cgecko's wrapper owns it), so this cannot force the
+// game's "fielder already picked" result the way the ASM does: the game is
+// free to override the selection on the same frame.
 
 #include "ManualFielderSelect5.h"
 
 CGECKO(Manual_Fielder_Select_5, .address = 0x80678F8C, .state = MSSB_GAME,
-                               .instruction = "lbz r0, 0x1BD1(r6)");
+                               .instruction = "lbz r0, 0x1BD1(r6)",
+                               .notes = "Developer test code. Leave this off.\n"
+                                        "Unfinished port of Manual Fielder Select 5; use that instead.");
 void Manual_Fielder_Select_5()
 {
   bool R_pressed_this_frame = false;

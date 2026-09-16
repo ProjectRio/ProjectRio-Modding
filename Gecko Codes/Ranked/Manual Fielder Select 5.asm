@@ -9,16 +9,11 @@
 ###########################################################
 ###########################################################
 
-# MECHANICS:
-# Uses the vanilla mario baseball control lockouts
-# R - closest fielder without hand
-#   - to drop spot when ball in the air
-#   - to the ball when the ball is grounded
-#   - doesn't work when star swing is active & airborne
-# Z - undo manual fielder select
+# *R: select the closest fielder without the ball (closest to the landing
+# * spot while the ball is in the air, closest to the ball once it is down).
+# *Z: undo the selection. Does not work during an airborne star swing.
 
-# TODO:
-#   - currently only swaps to 2nd closest if R is held down. need to fix
+# TODO: currently only swaps to 2nd closest if R is held down
 
 # r15 = Mfs vars - 0x0 (previous state), 0x1 (current state), 0x3 (mfs fielder)
 # r16 = Frames after contact
@@ -43,15 +38,8 @@ GetOldSelect:
   lis r15, 0x802E
   ori r15, r15, 0xBF96
 
-# Here's the flow of things here:
-# - if it's only the 4th frame after contact, deselect; we do this to prevent manual selects from the previous AB from carrying over
-# - else if it's after the 3rd out, allow a manual select to permit moonwalking
-# - else if the ball is not in the unfielded state, deselect so that the code doesn't run after fielding the ball
-# - else, run the rest of the function
-
-# r16 = frames after contact
-# r17 = number of outs
-# r18 = BallState
+# frame 4 after contact resets (no carry-over from the previous AB); after the 3rd out
+# a select is allowed (moonwalking); otherwise only while the ball is unfielded
 CheckGameState:
   lis r16, 0x8089             # num frames after contact
   ori r16, r16, 0x269e
@@ -79,12 +67,6 @@ ResetVars:
   stb r4, 3(r15)
   b EndReal
 
-# r20 = BallHitState
-# r21 = Drop Spot coords
-# r22 = Ball coords
-# r23 = Fielder lockout array (bytes)
-# r24 = Type of Swing
-# r25 = is Star Swing
 CheckBallState:
   lis r20, 0x8089
   ori r20, r20, 0x26B2        # BallHitState

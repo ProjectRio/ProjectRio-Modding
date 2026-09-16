@@ -1,9 +1,7 @@
 /*#########################################################
 ManualFielderSelect5.h -- symbols for the C port of MFS v5.0
 #########################################################*/
-// Addresses are the ones the shipping "Manual Fielder Select 5.asm" uses; the
-// fielder array itself comes from the generated headers (g_Fielders, 9 x
-// InMemFielder @0x8088F368) instead of the old hand-written fielder_structs.h.
+// Addresses match the shipping "Manual Fielder Select 5.asm".
 
 #ifndef MANUAL_FIELDER_SELECT_5_H
 #define MANUAL_FIELDER_SELECT_5_H
@@ -50,8 +48,7 @@ typedef enum swingTypeEnum {
 #define ball_x VAR_ADDRESS(float, 0x80890B38)
 #define ball_z VAR_ADDRESS(float, 0x80890B40)
 
-// The fielders' per-frame movement state. The ASM version pokes the same bytes
-// through raw offsets: base 0x8088F368, stride 0x268, control status at +0x1D3.
+// the ASM version pokes the same bytes raw: base 0x8088F368, stride 0x268, control status at +0x1D3
 #define FielderData g_Fielders
 #define hasControl_goingToBall      AUTO_MOVEMENT_GOING_TO_BALL              // 0xF
 #define trackHitBall_phase2_AITeam  AUTO_MOVEMENT_TRACK_HIT_BALL_PHASE2_AI_TEAM // 0x2

@@ -2,17 +2,15 @@
 # Dictionary Replaces Records
 ###########################################################*/
 // Author: LittleCoaks
-//
-// *Makes the main-menu "Records" button open the game's unused Dictionary scene instead of Records (present in JP version).
-//
-// This is the clean, stock-scene version -- it only reroutes and fixes the
-// music. For the custom scene with added elements, use "Dictionary Scene".
+// The stock-scene version: reroute + music fix only. For the custom scene
+// with added elements, use "Dictionary Scene".
 
 #include "Include/Rio/DictionaryReroute.h"
 
-// No .address -> runs every frame; .state = MSSB_MENU -> only while the menu
-// REL is resident.
-CGECKO(DictionaryReplacesRecords, .state = MSSB_MENU);
+CGECKO(DictionaryReplacesRecords, .state = MSSB_MENU,
+       .notes = "Makes the Records button on the main menu open the game's\n"
+                "unused Dictionary scene instead of Records.\n"
+                "Turn on this or \"Dictionary Scene\", not both.");
 void DictionaryReplacesRecords()
 {
     DictionaryReroute_Tick();

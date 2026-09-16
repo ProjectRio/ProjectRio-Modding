@@ -2,18 +2,11 @@
 # Item List Demo
 ###########################################################*/
 // Author: LittleCoaks
+// Demo of the ScreenList.h helper; only the P1 input read is game-state.
 
-// *Demo of the ScreenList.h helper: a scrollable list of item names with
-// *a colored ">" cursor. D-pad up/down (P1) moves the selection.
-
-// MatchData.h for InputBuffer/PAD_BUTTON_* -- ScreenList.h (via
-// ScreenText.h) only needs the shared GlobalData.h, so the list widget
-// itself works in the menu too; only this demo's input read is game-state.
 #include "Include/game/UnknownHomes_Game.h"
 
-// 4 visible rows + 1 for the selected row's cursor glyph (see
-// ScreenList.h's LIST_CURSOR_WIDTH note on why the cursor is a second
-// WriteTextEx call).
+// 4 visible rows + 1 for the selected row's cursor glyph (see ScreenList.h's LIST_CURSOR_WIDTH note)
 #define TEXT_SLOTS 5
 #include "Include/Rio/ScreenList.h"
 
@@ -23,13 +16,14 @@
 static ScreenList s_demoList = { 5, 0, 0, 4 };
 static u16 s_prevButtons = 0;
 
-CGECKO(ItemListDemo, .state = MSSB_GAME);
+CGECKO(ItemListDemo, .state = MSSB_GAME,
+       .notes = "Developer test code. Leave this off.\n"
+                "Shows a scrollable test list on screen (D-pad up/down moves it).");
 void ItemListDemo()
 {
     ScreenTextTick();
 
-    // Edge-detect: only move the selection on the frame a direction is
-    // newly pressed, not every frame it's held.
+    // edge-detect: only move on the frame a direction is newly pressed
     u16 held    = (u16)g_InputBuffer.pads[0].button;
     u16 pressed = held & (u16)~s_prevButtons;
     s_prevButtons = held;

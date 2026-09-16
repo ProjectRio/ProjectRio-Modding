@@ -5,6 +5,8 @@
 
 # Address: 0x8065074C
 # State: Menu
+# *On the stadium select screen, press X to ban the highlighted stadium
+# *(its icon is removed).
 
 ###########################################################
 ###########################################################

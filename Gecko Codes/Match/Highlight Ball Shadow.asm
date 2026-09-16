@@ -5,6 +5,7 @@
 
 # Address: 0x806a844c
 # State: Game
+# *Makes the ball's shadow stand out so it is easier to track.
 
 ###########################################################
 ###########################################################

@@ -5,6 +5,7 @@
 
 # Address: 0x80651E68
 # State: Game
+# *Saves the game's random batting values where Rio can read them for stat tracking.
 
 ###########################################################
 ###########################################################

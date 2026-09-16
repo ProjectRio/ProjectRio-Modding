@@ -4,6 +4,7 @@
 # Author: Roeming
 
 # Address: 0x806a82b0
+# *Hold Z while batting to show the easy-batting guide. No changes to gameplay.
 
 ###########################################################
 ###########################################################

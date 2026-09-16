@@ -3,6 +3,8 @@
 ###########################################################
 # Author: LittleCoaks
 # State: Game
+# *Pitch clock: if the pitcher has not thrown within 10 seconds,
+# *the pitch is thrown automatically.
 
 ###########################################################
 ###########################################################

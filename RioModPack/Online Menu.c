@@ -2,93 +2,7 @@
 # Online Menu
 ###########################################################*/
 // Author: LittleCoaks
-
-// *Adds an eighth button, "Online", ABOVE Exhibition Game on the main menu.
-// *It is main-menu index -1: pressing Up from Exhibition Game lands on it,
-// *Down from Options wraps round to it, and it wraps the other way too.
-// *Selecting it opens a placeholder screen -- the Options screen's backdrop
-// *(gradient plus top bar) recoloured red, nothing else -- that B backs out
-// *of to the main menu. The button is drawn by the game's own menu
-// *widgets -- same bar, same highlight, same label font -- so it looks like it
-// *shipped with the disc.
-//
-// HOW THE MAIN MENU IS BUILT (traced live 2026-09-10, US disc, menus.rel).
-//
-// The buttons are not text: each label is a 156x21 4-bit texture in the
-// container the menu loads under tag 6 (ZZZZ.dat entry 1740, textures t49 and
-// t52-t57). The screen is a tree of DOL UI records (0xC0 bytes each, pool
-// menuGraphicsStructures 0x8039C3E0) that mainMenuRelated's state 0 builds
-// from a descriptor list through addGraphicsElementToScene. Every record is
-// also reachable by a HANDLE: graphicsRelatedArray[item->base + handle] holds
-// its pointer, where `item` is the menu's own draw node. The main-menu
-// controller (menus.rel fn_2_747FC, the per-frame node function) addresses
-// them only by handle, in descriptor order:
-//
-//     0..2    background, panel frame, the button column (parent of the rest)
-//     3..9    the orange highlight bar, one per button        (layout elem 57)
-//     10..16  the grey idle bar, one per button               (layout elem 59)
-//     17..23  the highlight bar's animated shine, one each    (layout elem 55,
-//             a CHILD of the matching 57 record)
-//     24..30  the label, one per button                       (layout elem 53)
-//     31      column art                                      (elem 49)
-//     32, 33  the preview picture and its crossfade partner   (elem 48)
-//
-// A button's position comes from the column: its layout has one anchor per
-// (child element, sub-index) pair, and the DOL matches each child record by
-// element + the s16 at +0x72 (6 for Exhibition Game down to 0 for Options),
-// copying the anchor's matrix into child+0x78 every frame the column draws.
-// The record's own position (+0x48) is then applied on top, in the column's
-// space. So a copy of an Exhibition Game record with pos.y = -43 (one row
-// pitch, measured from the anchors) draws one row ABOVE Exhibition Game with
-// every property of the original -- that is the whole trick, verified live
-// before any of this was written.
-//
-// Records with a parent are drawn only on frames the parent attached them
-// (+0xA8), which is how the six unselected highlight bars stay invisible. The
-// selected one is the record whose visible flag (+0x54 bit 1) is set; the
-// controller flips those flags, kicks the shine (+0x5C frame, +0x68 play)
-// and the label pulse, and crossfades the preview picture, in
-// fn_2_73EFC/fn_2_73CBC while process code 0x56 ("cursor moved") is pending.
-// With a cursor of -1 those helpers would index handle 2 -- the column -- and
-// hide the whole menu, so any transition that touches -1 is done here instead
-// and the stock helpers are never told about it.
-//
-// THE TEXTURES. The pool's records name a texture by index into the container,
-// and nothing on the main menu uses t50 or t51 (two 10x72 strips). After the
-// container loads, record 50 is rewritten to describe the 156x21 C4 label and
-// record 51 the 357x302 C8 preview picture, both pointing at pixel and palette
-// arrays that live in this image (RioModPack/OnlineTexture.h, generated from
-// assets/Online.png and assets/OnlinePanel.png by MakeOnlineTexture.py; 32-byte
-// aligned, because the GPU reads them where they are -- the first version
-// parked the label's pixels in t63's area, which is Toy Field's preview
-// picture, and corrupted it). The container is re-read from disc on every
-// main-menu entry that is not a resume, and the patch is redone each time the
-// scene is built, so other screens that use entry 1740 see a stock copy.
-//
-// ROW SPACING. The stock rows sit 43 px apart from the column's anchors at
-// y = 100 .. 358, inside a box drawn to that height. An eighth row does not
-// fit, so the seven anchors are rewritten in the loaded layout to 137 .. 359
-// (37 px apart) and the Online row takes y = 100: eight rows in the same box.
-//
-// DEFAULT. The cursor starts on Online: it is set to -1 before the controller
-// runs its entry animation (which then shows no stock highlight at all, and
-// its "wait for the bar" phase counts zero bars, so it completes on the
-// picture's fade-in alone), and the Online highlight is shown directly.
-//
-// SELECTING IT. mainMenuRelated's A handler switches on the cursor and, for
-// anything above 6 (unsigned, so -1 qualifies), falls through to "confirm
-// whatever mainMenuOptionSelectedIndex says". The A hook sets that to Options
-// (6) and arms a latch; the stock Options transition then runs unchanged
-// (fade, teardown of the button scene, state 8) up to its changeScreenVariables
-// (6), which the latch redirects to ONLINE_SCREEN_CODE. Leaving the Online
-// screen writes the menu-control block the way an Options exit leaves it, so
-// mainMenuScreen takes its resume path (prevScreen 6 -> state 12) rather than
-// a cold reload.
-//
-// ADDRESSES are menus.rel code and .bss (fixed: the REL always links at the
-// same place) plus a few DOL routines taken by address, the way Options Menu.c
-// takes changeScreenVariables. Every hook here is .state = MSSB_MENU except
-// the leak watchdog.
+// See docs/menu_scenes.md ("The Online button").
 #include "Include/game/UnknownHomes_Game.h"
 #include "Include/static/UnknownHomes_Static.h"
 #include "Include/Symbols/dol.h"
@@ -121,7 +35,7 @@
 #define ONL_ROW_COUNT     7
 #define ONL_COLUMN_ELEM   56          // the column's layout element: it owns the row anchors
 
-// Handles in the main-menu node, see the header comment.
+// Handles in the main-menu node.
 #define H_COLUMN     2
 #define H_BAR(i)     (3 + (i))
 #define H_GREY(i)    (10 + (i))
@@ -134,7 +48,6 @@
 #define ELEM_SHINE   55
 #define ELEM_LABEL   53
 
-// Record fields and DOL routines come from Include/Rio/MenuScene.h.
 #define R_PARENT     MS_PARENT
 #define R_NEXT       MS_NEXT
 #define R_CHILD      MS_CHILD
@@ -155,9 +68,6 @@
 #define ONL_ICON_TABLE   0x32                          // the preview pictures, indexed by button
 
 // ---- our state, in claimed RAM (see ClaimedFreeMemory.h) -------------------
-// No payload statics for mutable state: cgecko reaches those through r31,
-// which is NULL inside helpers. The texture array is read-only .picdata and its
-// pointer is formed in the hook body and passed down, which is fine.
 #define g_onlMagic       VAR_ADDRESS(u32, 0x802EC32C)
 #define g_onlValid       VAR_ADDRESS(u32, 0x802EC330)   // the four copies below exist
 #define g_onlItem        VAR_ADDRESS(u32, 0x802EC334)   // the main-menu draw node they belong to
@@ -166,7 +76,6 @@
 #define g_onlShine       VAR_ADDRESS(u32, 0x802EC340)   // our bar's shine     (copy of handle 17)
 #define g_onlLabel       VAR_ADDRESS(u32, 0x802EC344)   // our label           (copy of handle 24)
 #define g_onlArmed       VAR_ADDRESS(u32, 0x802EC348)   // A was pressed on Online: reroute the Options transition
-// A highlight move in progress (see MoveHighlight / OnlineAnimTick).
 #define g_onlAnim        VAR_ADDRESS(u32, 0x802EC34C)   // 1 while a move touching Online is animating
 #define g_onlAnimNew     VAR_ADDRESS(u32, 0x802EC350)   // the arriving highlight bar record
 #define g_onlAnimNewEnd  VAR_ADDRESS(u32, 0x802EC354)   // ...and the frame its slide ends on
@@ -175,11 +84,10 @@
 #define g_onlAnimShine   VAR_ADDRESS(u32, 0x802EC360)   // the arriving bar's shine record
 #define g_onlAnimCur     VAR_ADDRESS(u32, 0x802EC364)   // the cursor to publish as "drawn" when done
 #define g_onlAnimLocked  VAR_ADDRESS(u32, 0x802EC368)   // input was locked for this move (not for the entry slide)
-// The Online screen's backdrop (see the placeholder screen section).
 #define g_onlBg          VAR_ADDRESS(u32, 0x802EC36C)   // 1 while the backdrop records exist and the layout is recoloured
 #define g_onlBgStart     VAR_ADDRESS(u32, 0x802EC370)   // saved UI element-loop start bound
 #define g_onlBgEnd       VAR_ADDRESS(u32, 0x802EC374)   // saved UI element-loop end bound
-#define ONL_BG_ITEM      0x802EC378                      // 24-byte scene node the backdrop records hang off (+0x14 base, +0x16 count)
+#define ONL_BG_ITEM      0x802EC378                      // 24-byte scene node the backdrop records hang off
 #define ONL_MAGIC        0x0A11E003
 
 #define ONL_ENTRY        (-2)   // "prev" for the slide-in when the scene is built
@@ -206,11 +114,8 @@ static void MoveHighlight(u32 item, s32 prev, s32 cur);
 #define ItemRecord MS_Record
 
 // ---- the texture ------------------------------------------------------------
-/* Rewrite texture records 50 and 51 of the tag-6 container as copies of the
- * Exhibition Game label's and Toy Field picture's records, pointing at our
- * pixels and palettes, and space the column's seven row anchors for eight
- * rows. Idempotent, and it refuses to touch a container that is not the one it
- * expects. Returns 0 if it did nothing. */
+/* Retarget texture records 50/51 at our pixels and space the column's row
+ * anchors for eight rows. Idempotent; refuses an unexpected container. */
 static int PatchOnlineContainer(const u8* tex, const u8* panel)
 {
     int i;
@@ -226,18 +131,12 @@ static int PatchOnlineContainer(const u8* tex, const u8* panel)
     if (((u32)tex & 31) || ((u32)panel & 31))
         return 0;                                // the GPU needs 32-byte alignment
 
-    // The label: t50 becomes a 156x21 C4 image with our pixels and palette.
     MS_RetargetTexture(hdr, ONL_TEX_VICTIM, ONL_TEX_SOURCE, tex, tex + ONLINE_TEX_DATA_SIZE);
 
-    // The preview picture: t51 becomes a 357x302 C8 image, like t61-t67.
     src = MS_TEX(hdr, ONL_PANEL_SOURCE);
     if (MS_TEX_W(src) == ONL_PANEL_W && MS_TEX_H(src) == ONL_PANEL_H)
         MS_RetargetTexture(hdr, ONL_PANEL_VICTIM, ONL_PANEL_SOURCE, panel, panel + ONLINE_PANEL_DATA_SIZE);
 
-    // The row anchors: the column element's parts 1..7 each begin with one
-    // anchor sub-record. Every value is checked against the stock (or
-    // already-squeezed) layout before any is written, so an unfamiliar layout
-    // keeps its rows.
     if (MS_ELEM_COUNT(layout) <= ONL_COLUMN_ELEM)
         return 1;
     elem = MS_LAYOUT_ELEM(layout, ONL_COLUMN_ELEM);
@@ -277,9 +176,7 @@ static void DropAllRecords(void)
     g_onlItem  = 0;
 }
 
-/* Build the Online button under the main-menu node `item`. Creation order is
- * draw order (the pool is drawn by index): bar, grey bar, shine, label -- the
- * same order the stock scene keeps its own. */
+/* Build the Online button under the main-menu node `item`. Creation order is draw order. */
 static void BuildOnlineButton(u32 item, const u8* tex, const u8* panel)
 {
     u32 column = ItemRecord(item, H_COLUMN);
@@ -288,8 +185,6 @@ static void BuildOnlineButton(u32 item, const u8* tex, const u8* panel)
     u32 shine  = ItemRecord(item, H_SHINE(0));
     u32 label  = ItemRecord(item, H_LABEL(0));
 
-    // The layout we traced, or nothing: a wrong handle table would copy the
-    // wrong records and draw junk over the menu.
     if (R_ELEM(bar) != ELEM_BAR || R_ELEM(grey) != ELEM_GREY ||
         R_ELEM(shine) != ELEM_SHINE || R_ELEM(label) != ELEM_LABEL ||
         R_PARENT(bar) != column || R_PARENT(shine) != bar)
@@ -325,22 +220,17 @@ static void BuildOnlineButton(u32 item, const u8* tex, const u8* panel)
     g_onlItem  = item;
     g_onlValid = 1;
 
-    // Start on Online. The controller's entry animation runs after this hook
-    // on the same frame and reads the cursor: with -1 it highlights nothing,
-    // so only our highlight shows, from the first frame.
+    // Start on Online: the controller's entry animation reads -1 and highlights nothing.
     ONL_CURSOR_PREV = 0;
     ONL_CURSOR      = -1;
     MoveHighlight(item, ONL_ENTRY, -1);
 }
 
 // ---- lifecycle: hook the main-menu node function ----------------------------
-// fn_2_747FC runs once per frame from the frame after mainMenuRelated's state 0
-// built the scene until the frame it tears it down (Static_Stats_Tables+0x472A
-// == 0 on entry: it frees every handle and removes itself). Running before its
-// body gives us both edges: first sight of a scene -> build, teardown frame ->
-// drop our copies before the game frees the parent they hang from.
+// fn_2_747FC: first sight of a scene -> build; teardown frame -> drop our copies.
 CGECKO(OnlineSceneFrame, .address = 0x806B3890, .state = MSSB_MENU,
-                         .instruction = "stwu r1, -0x20(r1)");
+                         .instruction = "stwu r1, -0x20(r1)",
+                         .notes = "Adds an Online button to the main menu.");
 void OnlineSceneFrame()
 {
     u32 item = ONL_ITEM_NOW;
@@ -359,10 +249,7 @@ void OnlineSceneFrame()
         BuildOnlineButton(item, s_onlineTexture, s_onlinePanel);
 }
 
-// Safety net for the copies: if the scene went away by a route the node hook
-// never saw (a REL swap, a savestate, a crash path), the copies must not stay
-// "in use" for the rest of the session. Free them when the record they were
-// copied from is no longer in use or the menu control block is gone.
+// Safety net: free the copies if the scene went away by a route the node hook never saw.
 CGECKO(OnlineRecordWatchdog, .state = MSSB_ALWAYS);
 void OnlineRecordWatchdog()
 {
@@ -378,26 +265,8 @@ void OnlineRecordWatchdog()
 static void LabelIdle(u32 rec)   { R_FRAME(rec) = 0; R_PLAY(rec) = 0; }
 static void LabelActive(u32 rec) { R_FRAME(rec) = 0; R_PLAY(rec) = 1; }
 
-/* Move the highlight from `prev` to `cur` without the stock controller, for
- * moves that touch -1 -- with the controller's own animation. Its phase 0
- * (fn_2_73EFC) starts the arriving bar's timeline at a frame chosen by
- * direction, starts the shine, crossfades the picture, pulses the label and
- * locks input; on a wrap the leaving bar also plays a wrap-out segment. Phase
- * 1 (fn_2_73CBC) then stops each timeline at its end frame and unlocks; that
- * half is OnlineAnimTick, run per frame from the scene hook.
- *
- * Bar timeline (layout element 57), from the controller's constants:
- *     0 .. 0xE     appear in place           (entry, and arriving by wrap-down)
- *     0xF .. 0x1D  arrive from the row above (moving down)
- *     0x1E .. 0x2C arrive from the row below (moving up)
- *     0x2D .. 0x36 wrap segment: played forward by the bar leaving off the
- *                  bottom, backward (0x36 -> 0x2D) by the bar arriving at the
- *                  bottom from the top; the bar leaving off the top runs
- *                  8 -> 0 backward.
- * The shine ends at 0xE and the picture's fade-in at 0xA. Play mode 1 counts
- * up, 4 counts down. `prev` = ONL_ENTRY is the slide-in when the scene is
- * built: the stock entry pass locks and unlocks input itself that frame and
- * sets the picture up after this hook, so neither is touched here. */
+/* Move the highlight from `prev` to `cur` for moves that touch -1, with the
+ * controller's own animation (phase 0 here, phase 1 in OnlineAnimTick). */
 static void MoveHighlight(u32 item, s32 prev, s32 cur)
 {
     u32 newBar   = cur  >= 0 ? ItemRecord(item, H_BAR(cur))    : g_onlBar;
@@ -436,10 +305,7 @@ static void MoveHighlight(u32 item, s32 prev, s32 cur)
     R_PLAY(newShine)  = 1;
     LabelActive(newLabel);
 
-    // The picture. Its timeline fades in over frames 0..10 and out over
-    // 10..20 (probed live). Incoming picture on handle 0x20 from frame 0,
-    // frozen at 10 by the tick; outgoing on 0x21 (drawn on top) from 10,
-    // fading out to its held last frame.
+    // The picture crossfade: incoming on handle 0x20 from frame 0, outgoing on 0x21 from 10.
     rec = ItemRecord(item, H_PANEL_NEW);
     if (cur >= 0) ONL_load_Icon(item, H_PANEL_NEW, 1, ONL_ICON_TABLE, cur);
     else          R_ICON(rec) = ONL_PANEL_VICTIM;
@@ -464,9 +330,7 @@ static void MoveHighlight(u32 item, s32 prev, s32 cur)
     g_onlAnim       = 1;
 }
 
-/* Phase 1: stop each timeline on its end frame; when all have stopped,
- * publish the drawn cursor and unlock. A stopped timeline stays on its end
- * frame, so re-checking every frame is harmless, exactly as the stock check. */
+/* Phase 1: stop each timeline on its end frame; when all have, publish the cursor and unlock. */
 static void OnlineAnimTick(void)
 {
     u32 rec;
@@ -489,9 +353,7 @@ static void OnlineAnimTick(void)
     }
     if (g_onlAnimLocked)
     {
-        // Freeze the incoming picture on its fully-visible frame. Checked with
-        // >= rather than ==: one frame of the fade may slip past between the
-        // move and this tick, and beyond 10 the timeline fades out again.
+        // >= not ==: a frame of the fade may slip past, and beyond 10 it fades out again.
         rec = ItemRecord(g_onlItem, H_PANEL_NEW);
         if ((R_FRAME(rec) >> 16) >= 0xA) { R_FRAME(rec) = PANEL_REST_FRAME; R_PLAY(rec) = 0; }
         else done = 0;
@@ -504,17 +366,7 @@ static void OnlineAnimTick(void)
         ONL_makeCursorMovable(0);
 }
 
-// mainMenuRelated, D-pad branch: the cursor has just been stepped and wrapped
-// (Up from 0 -> 6, Down from 6 -> 0) and the game is about to post process code
-// 0x56 so the controller animates the move. The hooked instruction IS that
-// call (`bl updateCharacterSelectProcessCode`), replaced by a nop, so this
-// decides whether the stock controller hears about the move at all.
-//
-// Both wraps become -1 instead: Up from 0 is "above Exhibition Game", Down from
-// 6 is "wrap past Options". From -1 the stock arithmetic already does the
-// right thing (-1 - 1 < 0 wraps to 6; -1 + 1 = 0), so no other case needs
-// remapping. A move that touches -1 is drawn here; every other move is the
-// stock controller's, exactly as before.
+// D-pad branch, the `bl updateCharacterSelectProcessCode(0, 0x56)` after the wrap: both wraps become -1.
 CGECKO(OnlineCursorMove, .address = 0x80641494, .state = MSSB_MENU,
                          .instruction = "nop");
 void OnlineCursorMove()
@@ -539,11 +391,8 @@ void OnlineCursorMove()
     MoveHighlight(g_onlItem, prev, cur);
 }
 
-// mainMenuRelated, A branch, just before `switch (cursor)`. The switch is a
-// jump table guarded by an UNSIGNED compare against 6, so -1 skips it and lands
-// on the common tail: "menuProcess = 5, confirm whatever
-// mainMenuOptionSelectedIndex holds". Make that Options, and arm the reroute.
-// The hooked `lis r4, 0x8075` is re-run after the body.
+// A branch, before `switch (cursor)`: -1 skips the unsigned-guarded jump table and
+// confirms mainMenuOptionSelectedIndex, so make that Options and arm the reroute.
 CGECKO(OnlineConfirm, .address = 0x80641294, .state = MSSB_MENU,
                       .instruction = "lis r4, -32651");
 void OnlineConfirm()
@@ -556,9 +405,7 @@ void OnlineConfirm()
     }
 }
 
-// Same branch, the `bl updateCharacterSelectProcessCode(0, 0x58)` that plays
-// the "button pressed" animation. Its handler indexes handle 17 + cursor,
-// which for -1 is the grey bar of Options; skip it for our button.
+// The "button pressed" animation indexes handle 17 + cursor; skip it for -1.
 CGECKO(OnlineConfirmAnim, .address = 0x806413A4, .state = MSSB_MENU,
                           .instruction = "nop");
 void OnlineConfirmAnim()
@@ -568,8 +415,7 @@ void OnlineConfirmAnim()
         ONL_setProcess(0, 0x58);
 }
 
-// mainMenuRelated state 8, the Options transition's `bl changeScreenVariables`
-// (its `li r3, 6` is the instruction before). Redirect it while armed.
+// mainMenuRelated state 8, the Options transition's `bl changeScreenVariables`.
 #define changeScreenVariables ((int (*)(int))0x80640234)
 CGECKO(OnlineScreenChange, .address = 0x8064179C, .state = MSSB_MENU,
                            .instruction = "nop");
@@ -581,31 +427,7 @@ void OnlineScreenChange()
 }
 
 // ---- the placeholder screen ---------------------------------------------------
-// screenFuncTable[ONLINE_SCREEN_CODE] is the game's assert stub; replacing it
-// with `blr` after our body makes this the whole scene, the same construction
-// as Options Menu.c.
-//
-// THE BACKDROP is the stock Options screen's, in red. Traced on the stock
-// screen (hide one record at a time): the purple gradient is layout element
-// 301 with element 299 as its child, and the top bar is element 236 with the
-// bar shape, element 232, as a child (its other children are the screen icon
-// and the title text, left out here). All four live in the "menu bars and
-// cursors" container the menu keeps loaded under tag 1, so nothing has to be
-// read from disc. The purple is vertex colour in those elements' layout parts
-// -- six shades in 299, one in 232 (its base colour set; the tagged
-// alternatives belong to other screens) -- and the same hue rotated to red is
-// written into the loaded layout on entry and put back on exit.
-//
-// The bar is a container (236) whose children are the strip (232), the
-// slanted title plate (237), the title text (240, left out) and a separator
-// line (238); each is placed by the container's anchors through the sub-index.
-//
-// The records are made the way the game makes its own: a descriptor list
-// through addGraphicsElementToScene, hung off a scene node of ours in claimed
-// RAM, and freed with removeGraphicsElementFromScene. While the screen is up
-// the UI element loop's bounds (the pair the Options Menu's blanking uses) are
-// narrowed to just these records, so whatever the previous screen left in the
-// pool stays off screen without touching it.
+// The stock Options backdrop (tag 1 container), recoloured red in the loaded layout.
 #define ONL_BG_TAG      1
 #define ELEM_BG         301
 #define ELEM_BG_GRAD    299
@@ -628,7 +450,6 @@ static const u8 s_onlBgDescs[(ONL_BG_COUNT + 1) * 0x20] = {
     MS_DESC_END
 };
 
-// Purple -> red, hue rotated with saturation and brightness kept.
 // [0..5] the gradient (element 299), [6] the bar strip (232), [7..8] the plate (237).
 static const u32 s_onlPurple[9] = { 0x643689FF, 0x431071FF, 0x141E3CFF, 0x906FDDFF,
                                     0x7964C2FF, 0x482267FF, 0x441458FF, 0xA03ACBFF, 0xDD8CFF80 };
@@ -690,11 +511,7 @@ static void DropBackdrop(const u32* purple, const u32* red)
     g_onlBg = 0;
 }
 
-// Exit writes the menu-control block as an Options exit would have: current
-// 5, prevScreen 6, state 0. changeScreenVariables(5) would record prevScreen
-// = ONLINE_SCREEN_CODE, and mainMenuScreen only resumes (state 12, no
-// reload) for prevScreen 6, 9 or 12 -- anything else re-runs the cold path
-// against containers that are still loaded.
+// Replaces the assert stub screenFuncTable[ONLINE_SCREEN_CODE] points at.
 CGECKO(OnlineScene, .address = 0x806402B0, .state = MSSB_MENU,
                     .instruction = "blr");
 void OnlineScene()
@@ -715,9 +532,7 @@ void OnlineScene()
     }
 }
 
-// If the screen is left by any route but B (a REL swap, a savestate), the
-// backdrop records, the narrowed draw bounds and the recoloured layout must
-// not outlive it.
+// Safety net: drop the backdrop if the screen is left by any route but B.
 CGECKO(OnlineBackdropWatchdog, .state = MSSB_ALWAYS);
 void OnlineBackdropWatchdog()
 {

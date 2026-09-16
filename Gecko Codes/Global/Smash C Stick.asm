@@ -4,6 +4,8 @@
 # Author: LittleCoaks
 
 # Address: 0x800A5A3C
+# *Flicking the C-stick in a direction acts like holding the control stick
+# *that way and pressing A at the same time.
 
 ###########################################################
 ###########################################################

@@ -2,32 +2,8 @@
 # Rollback Seed Test  (mid-play completeness probe)
 ###########################################################*/
 // Author: LittleCoaks (harness drafted with Claude)
-//
-// Diagnostic, not a shipping feature -- leave it DISABLED in the ini except when
-// running the test.
-//
-// Settles the open question for MSSB rollback: is the ~18 KB logical seed (the
-// replay-snapshot structs + RNG + play counters) COMPLETE enough to restore at an
-// ARBITRARY mid-play frame? Hook = C2 at simulate1FrameOfTheGame (0x80699D34),
-// once per frame, before the logic step.
-//
-// v3: no ScreenText (the earlier version crashed BEFORE the test even ran --
-// savestate showed the scratch untouched and the fault by the text engine, so the
-// C2-driven ScreenText was the culprit). Results now go to claimed RAM you watch
-// in Dolphin's memory viewer (or savestate for offline read):
-//   0x802EBFC0  HEARTBEAT   increments every frame the hook runs (proves it runs)
-//   0x802EBFC4  MODE        0 idle, 1 armed, 2 waitReal, 3 waitReplay
-//   0x802EBFC8  RESULT      0 none, 1 COMPLETE (seed sufficient), 2 INCOMPLETE
-//   0x802EBFCC  HASH_A      checksum of the real  next frame
-//   0x802EBFD0  HASH_B      checksum of the replay next frame
-// (add 0x802EBFC0..0x802EBFD4 to ClaimedFreeMemory.h)
-//
-// METHOD: 3-frame state machine, one step per real frame, no re-entrancy.
-//   armed    : save 21-region seed to SCRATCH.            sim runs -> N+1_real
-//   waitReal : HASH_A = checksum(band); restore seed.     sim runs -> N+1_replay
-//   waitRepl : HASH_B = checksum(band); RESULT = (A==B).
-// Trigger: hold Z on P1 during a live ball (ball in flight after contact); DO NOT
-// touch the stick for ~3 frames (both sim passes must see identical inputs).
+// Diagnostic, not a shipping feature. Method, result addresses and how to
+// read them: docs/rollback.md
 
 #include "Include/game/UnknownHomes_Game.h"
 
@@ -76,7 +52,9 @@ static u32 band_checksum(void)
     return h;
 }
 
-CGECKO(RollbackSeedTest, .address = 0x80699D34, .state = MSSB_GAME);
+CGECKO(RollbackSeedTest, .address = 0x80699D34, .state = MSSB_GAME,
+       .notes = "Developer test code. Leave this off.\n"
+                "Rollback netplay experiment.");
 void RollbackSeedTest()
 {
     RT_HEART = RT_HEART + 1;   // proves the hook is running at all
@@ -99,16 +77,3 @@ void RollbackSeedTest()
         RT_MODE = 0;
     }
 }
-
-/*-----------------------------------------------------------------------------
- HOW TO READ IT (Dolphin memory viewer, or savestate slot 1 for me to read):
- - HEARTBEAT climbing every frame  => the C2 hook works. If it stays 0, the hook
-   itself is broken (crash is the injection, not the test).
- - Hold Z during a live ball: MODE steps 1->2->3->0 over three frames.
- - RESULT 1 (COMPLETE) => the 18 KB seed reproduced the frame -> Path B works.
-   RESULT 2 (INCOMPLETE) with HASH_A != HASH_B => seed is missing state; widen
-   SEED[] (or the derived heap) and re-test.
- - If it still crashes with the heartbeat climbing, the crash is seed_copy or the
-   restore -> that itself is the finding (naive struct-copy rewind isn't safe
-   mid-play; the derived actor/animation heap holds live references).
------------------------------------------------------------------------------*/

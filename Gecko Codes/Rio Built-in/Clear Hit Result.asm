@@ -5,6 +5,7 @@
 
 # Address: 0x806BBF88
 # State: game
+# *Clears the stored hit result at the start of each play so Rio's stat tracking reads it fresh.
 
 ###########################################################
 ###########################################################
