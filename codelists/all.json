@@ -4,18 +4,11 @@
     "folders": ["Gecko Codes"],
     "enabled": false,
     "exclude": [
-        "Gecko Codes/Ranked/Boot To Main Menu.asm",
         "Gecko Codes/Ranked/Skip Memory Card Check.ini"
     ],
     "_notes": [
-        "Both excludes are name collisions with a copy elsewhere in the tree; cgecko",
-        "keys an ini entry by name, so shipping both would silently drop one of them.",
-        "  Boot To Main Menu.asm      -- same gecko name as Global/Boot To Main Menu.c,",
-        "                                which does the same boot skip plus the memory",
-        "                                card load. Ranked builds its own copy anyway.",
-        "  Skip Memory Card Check.ini -- byte-for-byte the Rio Built-in copy (Rio Built-in/",
-        "                                Skip Memory Card Check on Main Menu.ini) apart",
-        "                                from one description line.",
-        "Renaming or deleting either duplicate would let these excludes go away."
+        "The exclude is a name collision: cgecko keys an ini entry by name, so shipping",
+        "both copies would silently drop one. Skip Memory Card Check.ini is the",
+        "Rio Built-in copy apart from one description line."
     ]
 }

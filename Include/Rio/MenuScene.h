@@ -399,9 +399,9 @@ static inline void MS_RestoreDraw(u32 savedStart, u32 savedEnd)
 }
 
 // ---- the menu control block -----------------------------------------------------
-// *(0x803CBBCC) -> {u16 rel, u16 screenCode, u16 menuProcess, u16 prevScreen,
-// u16 prevProcess}. changeScreenVariables (menus.rel 0x80640234) sets
-// prev = current, current = new, process = 0.
+// 0x803CBBCC -> {u16 rel, u16 screenCode, u16 menuProcess, u16 prevScreen,
+// u16 prevProcess}; changeScreenVariables sets prev = current, current = new,
+// process = 0.
 #define MS_MENU_CTRL         VAR_ADDRESS(u32, 0x803CBBCC)
 #define MS_SCREEN_CODE       VAR_ADDRESS(u16, MS_MENU_CTRL + 2)
 #define MS_MENU_PROCESS      VAR_ADDRESS(u16, MS_MENU_CTRL + 4)
