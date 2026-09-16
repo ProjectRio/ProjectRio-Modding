@@ -313,7 +313,7 @@ static void MoveHighlight(u32 item, s32 prev, s32 cur)
         if (prev >= 0) load_Icon((void*)item, H_PANEL_OLD, 1, ONL_ICON_TABLE, prev);
         else           R_ICON(rec) = ONL_PANEL_VICTIM;
         R_FLAGS(rec) |= R_VISIBLE; R_FRAME(rec) = PANEL_REST_FRAME; R_PLAY(rec) = 1;
-        MS_makeCursorUnmovable(0);
+        makeCursorUnmovable(0);
     }
 
     g_onlAnimNew    = newBar;
@@ -359,7 +359,7 @@ static void OnlineAnimTick(void)
     g_onlAnim = 0;
     ONL_CURSOR_SHOWN = (s32)g_onlAnimCur;
     if (g_onlAnimLocked)
-        MS_makeCursorMovable(0);
+        makeCursorMovable(0);
 }
 
 // D-pad branch, the `bl updateCharacterSelectProcessCode(0, 0x56)` after the wrap: both wraps become -1.

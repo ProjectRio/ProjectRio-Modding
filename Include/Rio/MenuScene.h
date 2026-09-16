@@ -20,6 +20,7 @@
 #include "Include/menus/yd_step.h"
 #include "Include/Unknown/File_0x80034cec.h"
 #include "Include/Unknown/File_0x80034e20.h"
+#include "Include/Unknown/File_0x80062674.h"
 #include "Include/Unknown/File_0x800b0a14.h"
 
 // ---- the pool of UI records --------------------------------------------------
@@ -84,12 +85,6 @@ static inline u32 MS_Record(u32 node, int handle)
 {
     return VAR_ADDRESS(u32, MS_GRA_ARRAY + (MS_NODE_BASE(node) + handle) * 8);
 }
-
-// ---- the DOL routines --------------------------------------------------------
-// The decomp declares these (void), but the DOL indexes its per-channel state by r3.
-typedef void (*ms_lock_t)(int channel);
-#define MS_makeCursorUnmovable    ((ms_lock_t)0x800626EC)
-#define MS_makeCursorMovable      ((ms_lock_t)0x80062674)
 
 // ---- descriptors ---------------------------------------------------------------
 #define MS_DESC(elem, mode, layer, parent, tag, sub)                          \
