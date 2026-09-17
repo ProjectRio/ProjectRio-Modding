@@ -2,6 +2,7 @@
 config.json
 .DS_Store
 __pycache__/
+CLAUDE.md
 
 # Generated from the decomp by SyncFromDecomp.py -- keep in sync with
 # GENERATED_ENTRIES in that script. (Include/Rio/ is hand-written and never
