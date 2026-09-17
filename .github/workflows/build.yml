@@ -1,0 +1,176 @@
+name: Build
+
+# One pipeline, three stages:
+#
+#   compile  Every code under "Gecko Codes/" (and the RioModPack bundle) still
+#            builds against the pinned Decomp commit. SyncFromDecomp.py
+#            regenerates Include/ exactly like a developer would after pulling,
+#            so a decomp change that breaks a mod -- a renamed symbol, a moved
+#            struct field -- fails here instead of surprising someone locally.
+#
+#   lists    The manifests in codelists/ are built and published as artifacts:
+#              all-codes         every code in the repo (codelists/all.json)
+#              rio-server-codes  only the codes named in codelists/rio-server.json
+#                                -- the selection the Rio server offers players
+#            Each holds GYQE01.ini, gecko_codes.json and gecko_codes.txt. A list
+#            that names a file which has been renamed or deleted fails the run,
+#            so a code cannot silently drop out of what the server offers.
+#
+#   release  On main only: the same files become the rolling "codes-latest"
+#            release, which gives the server a stable URL to read:
+#              .../releases/download/codes-latest/rio-server.json
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitppc:latest
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Python
+        run: apt-get update -qq && apt-get install -y --no-install-recommends python3
+
+      - name: Check the claimed-memory ledger
+        run: python3 CheckClaimedMemory.py
+
+      - name: Regenerate headers from decomp
+        run: python3 SyncFromDecomp.py
+
+      - name: Build every gecko code
+        run: python3 CGecko/build_all.py
+
+      # The pack is deployed by BuildToISO.py, but building it as a gecko code
+      # is a cheap proof that the bundle and everything it #includes compile.
+      - name: Build the RioModPack bundle
+        env:
+          PYTHONUTF8: "1"
+        run: python3 CGecko/cgecko.py RioModPack/RioModPack.c --no-launch --ini "$RUNNER_TEMP/riomodpack.ini"
+
+  lists:
+    needs: compile
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitppc:latest
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Python
+        run: apt-get update -qq && apt-get install -y --no-install-recommends python3
+
+      - name: Regenerate headers from decomp
+        run: python3 SyncFromDecomp.py
+
+      # Fails fast and cheaply when a manifest names something that has been
+      # renamed or removed, before spending a build on the rest.
+      - name: Validate the manifests
+        run: python3 BuildCodeList.py --check
+
+      - name: Build and package every code list
+        run: python3 BuildCodeList.py --zip --summary dist/RELEASE_NOTES.md
+
+      - name: Show what was built
+        run: cat dist/RELEASE_NOTES.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Loose copies under list-specific names, so the release can carry them
+      # as individual assets with a stable URL each.
+      - name: Stage the server-readable exports
+        run: |
+          set -eu
+          for list in dist/*/; do
+            slug="$(basename "$list")"
+            cp "$list/gecko_codes.json" "dist/$slug.json"
+            cp "$list/gecko_codes.txt"  "dist/$slug.txt"
+          done
+
+      - name: Upload the list of every code
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-codes
+          path: dist/all/
+          if-no-files-found: error
+
+      - name: Upload the Rio server's list
+        uses: actions/upload-artifact@v4
+        with:
+          name: rio-server-codes
+          path: dist/rio-server/
+          if-no-files-found: error
+
+      - name: Upload everything for the release
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-lists
+          path: |
+            dist/*.zip
+            dist/*.json
+            dist/*.txt
+            dist/RELEASE_NOTES.md
+          if-no-files-found: error
+
+  # Publishing runs outside the devkitPro container: it needs no toolchain, and
+  # the stock runner image is where the gh CLI lives.
+  release:
+    needs: lists
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # One release at a time: two pushes landing together must not race to
+    # replace the same tag. Don't cancel a run in progress -- a half-published
+    # release is worse than a redundant one.
+    concurrency:
+      group: publish-code-lists
+      cancel-in-progress: false
+
+    steps:
+      - name: Download the packaged lists
+        uses: actions/download-artifact@v4
+        with:
+          name: code-lists
+          path: dist
+
+      - name: Publish the rolling latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Gecko code lists, built from main @ ${GITHUB_SHA::7}."
+            echo
+            echo "**For programs** (the Rio server): \`rio-server.json\` is the selection Rio"
+            echo "offers players, \`all.json\` is every code in the repo. The \`.txt\` files are"
+            echo "the same data in the plain in-service layout."
+            echo
+            echo "**For players:** each zip holds a **GYQE01.ini** that REPLACES the one in"
+            echo "Project Rio's GameSettings folder -- don't merge it into your existing ini."
+            echo "Rio applies its Sys ini and your user ini both, so a code kept in each runs"
+            echo "twice and hangs the boot."
+            echo
+            cat dist/RELEASE_NOTES.md
+          } > notes.md
+
+          # Replace the rolling release outright rather than uploading over it:
+          # a list deleted from codelists/ has to stop being downloadable too.
+          gh release delete codes-latest --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create codes-latest dist/*.zip dist/*.json dist/*.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Code lists (main @ ${GITHUB_SHA::7})" \
+            --notes-file notes.md

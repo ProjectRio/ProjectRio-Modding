@@ -1,0 +1,22 @@
+{
+    // Mirrors what CGecko/cgecko.py actually passes to powerpc-eabi-gcc
+    // (GCC_FLAGS + the -I paths + the forced Common.h include), so IntelliSense
+    // resolves "Include/..." and the CGECKO()/ASM() macros the same way the
+    // real build does.
+    "version": 4,
+    "configurations": [
+        {
+            "name": "CGecko (devkitPPC)",
+            "compilerPath": "C:/devkitpro/devkitPPC/bin/powerpc-eabi-gcc.exe",
+            "compilerArgs": ["-mcpu=750", "-meabi", "-mhard-float", "-mno-sdata"],
+            "intelliSenseMode": "gcc-x86",
+            "cStandard": "gnu11",
+            "includePath": [
+                "${workspaceFolder}",
+                "${workspaceFolder}/CGecko"
+            ],
+            "forcedInclude": ["${workspaceFolder}/CGecko/Common.h"],
+            "defines": ["GEKKO"]
+        }
+    ]
+}
