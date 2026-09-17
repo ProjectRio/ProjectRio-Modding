@@ -33,7 +33,6 @@ it covers:
 | List | Covers | Ships |
 | --- | --- | --- |
 | `ranked` | `Gecko Codes/Ranked` | on |
-| `rio-built-in` | `Gecko Codes/Rio Built-in` | on |
 | `all` | `Gecko Codes` (everything) | off -- a catalog to pick from |
 | `rio-server` | the files named in the manifest | off -- what the Rio server offers players |
 
