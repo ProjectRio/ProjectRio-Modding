@@ -7,6 +7,11 @@ to "Gecko Codes/Ranked" is all it takes to put it in the ranked download; nobody
 has to remember to update a list. A manifest's `exclude` is the escape hatch for
 the handful of files that must stay out, and each one says why.
 
+A manifest can also (or instead) name individual `files`. That is for a list
+that is a deliberate selection rather than "everything in a folder" -- the set
+the Rio server offers players, say -- where a new code must NOT appear until
+somebody adds it on purpose.
+
     python BuildCodeList.py                 # build every list into dist/
     python BuildCodeList.py ranked          # build one list
     python BuildCodeList.py --zip           # also package each list as a zip
@@ -14,7 +19,9 @@ the handful of files that must stay out, and each one says why.
     python BuildCodeList.py --write-scripts # regenerate the per-list launchers
 
 Each list lands in dist/<list>/ as GYQE01.ini plus a README.txt naming the codes
-and the commit it was built from. That ini REPLACES Rio's user ini; it is never
+and the commit it was built from, and the same codes again as gecko_codes.txt /
+gecko_codes.json for anything that would rather not parse a Dolphin ini (the
+Rio server). That ini REPLACES Rio's user ini; it is never
 merged into one. Rio concatenates its Sys and user inis rather than letting one
 override the other, so a code present in both is applied twice, which silently
 overruns the gecko region and hangs the boot -- see BuildToRio.py for the
@@ -64,9 +71,12 @@ def load_manifest(path: str) -> dict:
     except json.JSONDecodeError as e:
         raise ListError(f"{slug}: not valid JSON ({e})")
 
-    folders = data.get("folders")
-    if not folders or not isinstance(folders, list):
-        raise ListError(f'{slug}: manifest needs a "folders" list')
+    folders = data.get("folders", [])
+    files   = data.get("files", [])
+    if not isinstance(folders, list) or not isinstance(files, list):
+        raise ListError(f'{slug}: "folders" and "files" must be lists')
+    if not folders and not files:
+        raise ListError(f'{slug}: manifest needs a "folders" or a "files" list')
 
     return {
         "slug":        slug,
@@ -74,6 +84,7 @@ def load_manifest(path: str) -> dict:
         "description": data.get("description", ""),
         "install":     data.get("install", ""),
         "folders":     [f.replace("\\", "/").rstrip("/") for f in folders],
+        "files":       [f.replace("\\", "/") for f in files],
         # Whether the bundle's codes arrive switched on. A ruleset ships on; a
         # catalog of everything ships off, because half of it contradicts the
         # other half and enabling all of it at once would not boot.
@@ -136,6 +147,9 @@ def expand(manifest: dict) -> tuple[list[str], list[str]]:
         for rel in scan_folder(folder):
             if rel not in sources:
                 sources.append(rel)
+    for rel in manifest["files"]:
+        if rel not in sources:
+            sources.append(rel)
 
     warnings = []
     for pattern in manifest["exclude"]:
@@ -150,18 +164,23 @@ def expand(manifest: dict) -> tuple[list[str], list[str]]:
 
 
 def validate(manifest: dict) -> list[str]:
-    """A manifest must name folders that exist and produce at least one code.
-    This is what --check (and CI) leans on when a folder gets renamed."""
+    """A manifest must name folders and files that exist and produce at least one
+    code. This is what --check (and CI) leans on when something gets renamed."""
     problems = []
     for folder in manifest["folders"]:
         if not os.path.isdir(os.path.join(SCRIPT_DIR, folder)):
             problems.append(f"missing folder: {folder}")
+    for rel in manifest["files"]:
+        if not os.path.isfile(os.path.join(SCRIPT_DIR, rel)):
+            problems.append(f"missing file: {rel}")
+        elif not rel.endswith(SOURCE_EXT):
+            problems.append(f"not a gecko source: {rel}")
     if problems:
         raise ListError(manifest["slug"] + ":\n  " + "\n  ".join(problems))
 
     sources, warnings = expand(manifest)
     if not sources:
-        raise ListError(f"{manifest['slug']}: folders hold no gecko sources")
+        raise ListError(f"{manifest['slug']}: names no gecko sources")
     return warnings
 
 
@@ -269,6 +288,60 @@ def write_readme(manifest: dict, out_dir: str, built: list[str], size: int) -> N
         f.write("\n".join(lines))
 
 
+def parse_ini_codes(ini_path: str) -> list[dict]:
+    """The built ini's [Gecko] section as records: name, authors, code lines,
+    note lines. The ini is what cgecko verified, so the exports are derived from
+    it rather than from the sources a second time."""
+    codes, cur, in_gecko = [], None, False
+    with open(ini_path, "r", encoding="utf-8-sig", errors="replace") as f:
+        for line in f:
+            s = line.strip()
+            if s.startswith("[") and s.endswith("]"):
+                in_gecko, cur = s == "[Gecko]", None
+            elif not in_gecko or not s:
+                continue
+            elif s.startswith("$"):
+                name, _, rest = s[1:].partition("[")
+                cur = {"name": name.strip(),
+                       "authors": [a.strip() for a in rest.rstrip("]").split(",")
+                                   if a.strip()],
+                       "code": [], "notes": []}
+                codes.append(cur)
+            elif cur is None:
+                continue
+            elif CODE_LINE.match(s):
+                cur["code"].append(s.upper())
+            elif s.startswith("*"):
+                cur["notes"].append(s[1:].strip())
+    return codes
+
+
+def write_exports(manifest: dict, out_dir: str, ini_path: str) -> None:
+    """gecko_codes.txt is the plain layout Rio's in-service list has always
+    used (game id, title, then `Name [Authors]` / code / description blocks);
+    gecko_codes.json is the same data for a program to read."""
+    codes = parse_ini_codes(ini_path)
+
+    lines = ["GYQE01", "Mario Superstar Baseball", ""]
+    for c in codes:
+        authors = f" [{', '.join(c['authors'])}]" if c["authors"] else ""
+        lines.append(c["name"] + authors)
+        lines += c["code"]
+        lines += [n if n else "*" for n in c["notes"]]
+        lines.append("")
+    with open(os.path.join(out_dir, "gecko_codes.txt"), "w",
+              encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines))
+
+    doc = {"game_id": "GYQE01", "list": manifest["slug"],
+           "name": manifest["name"], "built_from": git_describe(),
+           "enabled_by_default": manifest["enabled"], "codes": codes}
+    with open(os.path.join(out_dir, "gecko_codes.json"), "w",
+              encoding="utf-8", newline="\n") as f:
+        json.dump(doc, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
 def build_list(manifest: dict, dist: str, make_zip: bool) -> dict:
     """Build one manifest into dist/<slug>/GYQE01.ini. Returns a result dict."""
     out_dir  = os.path.join(dist, manifest["slug"])
@@ -283,8 +356,11 @@ def build_list(manifest: dict, dist: str, make_zip: bool) -> dict:
 
     print("=" * 70)
     print(f"  {manifest['name']}  ->  {display_path(ini_path)}")
+    origin = list(manifest["folders"])
+    if manifest["files"]:
+        origin.append(f"{len(manifest['files'])} named file(s)")
     print(f"  {len(sources)} source(s) from "
-          f"{', '.join(manifest['folders'])}  "
+          f"{', '.join(origin)}  "
           f"({'enabled' if manifest['enabled'] else 'disabled'} by default)")
     print("=" * 70)
     for warning in warnings:
@@ -324,6 +400,7 @@ def build_list(manifest: dict, dist: str, make_zip: bool) -> dict:
     size = gecko_bytes(ini_path) if os.path.isfile(ini_path) else 0
     if not failed:
         write_readme(manifest, out_dir, built, size)
+        write_exports(manifest, out_dir, ini_path)
 
     zip_path = None
     if make_zip and not failed:

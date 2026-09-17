@@ -26,14 +26,16 @@ git submodule update --init --recursive
 
 ## Code lists
 
-A *code list* is a folder of codes packaged as one drop-in `GYQE01.ini`. Each
-list is a manifest in `codelists/` naming the folders it covers:
+A *code list* is a set of codes packaged as one drop-in `GYQE01.ini`. Each list
+is a manifest in `codelists/` naming the folders -- or the individual files --
+it covers:
 
-| List | Folder | Ships |
+| List | Covers | Ships |
 | --- | --- | --- |
 | `ranked` | `Gecko Codes/Ranked` | on |
 | `rio-built-in` | `Gecko Codes/Rio Built-in` | on |
 | `all` | `Gecko Codes` (everything) | off -- a catalog to pick from |
+| `rio-server` | the files named in the manifest | off -- what the Rio server offers players |
 
 Everything cgecko can build under those folders goes in, so **adding a code to
 `Gecko Codes/Ranked` puts it in the ranked download** with no list to update.
@@ -46,6 +48,25 @@ Everything cgecko can build under those folders goes in, so **adding a code to
     "exclude": ["Gecko Codes/Ranked/superseded.asm"]
 }
 ```
+
+A list that is a deliberate selection names `files` instead of (or as well as)
+`folders`. `rio-server` works that way: a new code is offered to players only
+once its path is added to `codelists/rio-server.json`, never just because it
+landed in a folder. A path that no longer exists fails `--check`, so renaming a
+code cannot silently drop it from the server.
+
+```json
+{
+    "name": "Rio Server",
+    "files": ["Gecko Codes/Match/Disable Replays.c", "Gecko Codes/Menu/No Captains.c"],
+    "enabled": false
+}
+```
+
+Besides `GYQE01.ini`, every list is written as `gecko_codes.json` (name, authors,
+code lines and description per code, for a program to read) and
+`gecko_codes.txt` (the plain `Name [Authors]` / code / description layout the
+in-service list has always used).
 
 `exclude` is for the few files that must stay out -- it exists because cgecko
 keys an ini entry by name, so two sources with the same code name would silently
@@ -64,9 +85,16 @@ This never touches the ini in your `config.json` -- each list is built to its
 own file via cgecko's `--ini`. After adding or renaming a manifest, run
 `python BuildCodeList.py --write-scripts` to refresh the launchers.
 
-Every push to `main` builds all of them in CI and republishes them as the
-rolling **codes-latest** release, so the download always matches `main`. Pull
-requests build the lists too, which is what catches a folder somebody renamed.
+CI (`.github/workflows/build.yml`) runs on every push and pull request: it
+compiles every code under `Gecko Codes/` plus the RioModPack bundle, then builds
+the lists and uploads two artifacts -- **all-codes** (every code) and
+**rio-server-codes** (only the selection in `rio-server.json`). On `main` the
+same files are republished as the rolling **codes-latest** release, so the
+server has a stable URL that always matches `main`:
+
+```
+https://github.com/ProjectRio/ProjectRio-Modding/releases/download/codes-latest/rio-server.json
+```
 
 A packaged ini **replaces** Rio's user ini; it is never merged into one. Rio
 applies every ini it reads rather than letting one override another, so a code
