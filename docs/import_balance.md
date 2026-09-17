@@ -3,8 +3,8 @@
 Nineteen in-service Rio codes that existed only as hex, brought in as C. This
 file holds the engine knowledge they rely on, the full change logs that are too
 long for a player-facing `.notes`, and every place where the hex disagrees with
-what its author said it does. Behaviour was kept identical to the hex except
-where noted under "Deliberate differences".
+what its author said it does. Differences from the hex are listed under "Deliberate differences" and "Fixed
+codes".
 
 ## Tables these codes edit
 
@@ -96,64 +96,73 @@ Chemistry Threshold 80, Perfect Slap Buff, the jump part of the April Fools
 patch, and the Bowser part of Everyone Has Chemistry. "All Teams Are 5-Star
 Teams" had an explicit "is game.rel loaded" check, which became `.state`.
 
-## Where the hex disagrees with its own description
+## Fixed codes: how they differ from the in-service hex
 
-Behaviour was kept; these are for the maintainer.
+The hex-faithful import is commit 6e95d11. After review, the defects below were
+fixed so each code does what its change log says.
 
 Balance Patch (V 1.1)
-- Blue Shy Guy: the log says Running 50 -> 60. The write lands on
-  `ChargeHitPower` (50 -> 60). `Speed` stays 50, while `RunningStatBar` is
-  raised 5 -> 6 as if speed had changed.
-- Boo: an extra write sets Boo -> Black Shy Guy chemistry 86 -> 90. Not in the
-  log and not reciprocated; it sits one byte before the four Dry Bones entries,
-  so it looks like an off-by-one.
-- Dry Bones (gray/red/blue) "Sliding Catch -> Magical Catch": the low ability
-  byte goes 0x09 -> 0x80, which also removes Wall Splat.
+- Blue Shy Guy "Running 50 -> 60": the hex wrote `ChargeHitPower` (50 -> 60).
+  The code now writes `Speed` = 60 and leaves `ChargeHitPower` stock. The
+  `RunningStatBar` 5 -> 6 bump is kept.
+- The hex also set Boo -> Black Shy Guy chemistry 86 -> 90. The log mentions no
+  such link, it is not reciprocated, and none of the logged writes is missing
+  (all five Shy Guy <-> King Boo and all four Dry Bones <-> Boo links are there
+  in both directions), so it was a stray extra byte and is dropped.
+- Dry Bones (gray/red/blue) "Sliding Catch -> Magical Catch": the hex replaced
+  the whole low ability byte (0x09 -> 0x80), which also removed Wall Splat. The
+  code now writes `WALL_SPLAT | MAGICAL_CATCH` (0x81).
 
 Balance Patch (April Fools) (V 2.0)
-- "Koopa-Red" stat bars 5/4/4/5 -> 9: the writes land on `CHAR_ID` 12, which is
-  Green Koopa.
-- Petey "In-game Running 3 -> 8": lands on `FieldingStatBar` (3 -> 8). Petey's
-  `RunningStatBar` is 1 and is untouched.
-- The log calls 0x2D "Vertical Trajectory (push)" and 0x2E "Horizontal
-  Trajectory (mid)". The headers (and the V 1.1 log) have them the other way:
-  0x2D `HitTrajectoryPushPull`, 0x2E `HitTrajectoryHighLow`.
-- "Non-Captain Bowser Banned" is the `BanNonCaptainBowser` hook in
-  `css_initValues` (0x80051314, replacing `stb r0, 0x33(r5)` where r5 =
-  `charSelectStruct` and r0 = -1). It stores 0 instead of -1 to
-  `charSelectStruct + 0x33`, marks Bowser taken in
-  `charOnCharacterGridSelected`, and restores r0 = -1 for the stores that
-  follow. It overwrites r31, which the function restores from the stack before
-  returning. The per-frame code also holds `charSelectStruct + 0x40`
-  (0x803C6068) at 0. What those two roster bytes mean was not worked out.
-
-Everyone Has Chemistry
-- Carries an unrelated second feature: while Bowser bats, the lefty `fneg` is
-  NOPed (righty contact zone), otherwise it is restored. It restores the
-  instruction every frame, so it fights "Bats Are All Righty" if both are on.
+- "Koopa-Red" stat bars -> 9: the hex wrote `CHAR_ID` 12, which is Green Koopa;
+  the code now writes `CHAR_ID_KOOPA_RED` (42). Which id is which was checked
+  against the stock table: id 42 has charge power 60, the value the V 1.1 log
+  gives for Red Koopa. Unsettled: the log's "from" bars (5/4/4/5) are Green
+  Koopa's stock bars (Red's are 6/4/3/5), so the author's tool probably shared
+  the decomp's swapped Koopa names and the *target* may really have been id 12.
+- Petey "In-game Running 3 -> 8": the hex wrote `FieldingStatBar` (stock 3);
+  the code now writes `RunningStatBar` (stock 1), matching the speed buff.
+  Unsettled in the same way: the log's "from" value 3 is the fielding bar's.
+- Non-captain Bowser ban: the hex was an asm hook at 0x80051314 that clobbered
+  r31. It is now the same C hook as `Gecko Codes/Menu/Non-captain Bowser is
+  banned.c` (0x80051318, `li r0, -1` re-run), sharing `Include/Rio/CssSquares.h`.
+  The two codes use the same hook site; enable only one.
+- The per-frame write to 0x803C6068 is now named: it holds the Shy Guy grid
+  square (24) as taken, part of "Shy Guy removed".
+- The log's trajectory labels were swapped; this doc uses the header names:
+  0x2D `HitTrajectoryPushPull` (horizontal), 0x2E `HitTrajectoryHighLow`
+  (vertical). So Peach's change is vertical 2 -> 0, and Bowser's and Wario's
+  are horizontal -> 2 (push).
 
 Fix Toad Hitboxes and Bat Reach
-- The in-service description says the other Toads are matched to Red Toad. For
-  bat reach that is true (Blue/Yellow/Green/Purple get Red's first four
-  `BatterReachStruct` floats). For the fielding hitbox it is the reverse: Red
-  Toad's `FielderHitboxConsts` entry is overwritten with the other Toads'
-  values -- except the sixth value, written as 336 (0x150) where the other
-  Toads have 350 (0x15E). Possibly a typo in the original.
-- The code applies once per game.rel load, keyed on Red Toad's first hitbox
-  value still being the stock 70.
+- Red Toad's `FielderHitboxConsts` entry is overwritten with the other Toads'
+  values; the hex wrote 336 (0x150) for the sixth value where every other Toad
+  has 350 (0x15E). Now 350.
+- The in-service description said everything is matched to Red Toad. In fact
+  Red Toad receives the other Toads' fielding hitbox, and the other four Toads
+  receive Red Toad's bat reach (first four `BatterReachStruct` floats). The
+  `.notes` now says so.
+- Applies once per game.rel load, keyed on Red Toad's first hitbox value still
+  being the stock 70.
+
+Not changed
+- Everyone Has Chemistry still carries its second feature: while Bowser bats,
+  the lefty `fneg` is NOPed (righty contact zone), otherwise it is restored. Its
+  own description lists this, so it is treated as intended. It restores the
+  instruction every frame, so it fights "Bats Are All Righty" if both are on.
 
 ## Full change logs
 
 ### Balance Patch (V 1.1)
 
 - Yellow Toad: + Magical Catch. Green Toad: + Super Catch.
-- Shy Guy: charge power 55 -> 70. Blue: see above. Yellow: star swing -> Phony
+- Shy Guy: charge power 55 -> 70. Blue: speed 50 -> 60. Yellow: star swing -> Phony
   Ball. Green: curve 60 -> 70. Black: throwing arm 50 -> 60. All five: King Boo
   chemistry 90 (both directions).
 - Red Koopa: charge power 60 -> 85. Green Koopa: curve 50 -> 70, arm 50 -> 60.
 - Peach: arm 40 -> 70. Waluigi: curve 70 -> 100, star swing -> Phony Ball.
 - Red Paratroopa: bunt 20 -> 60, vertical trajectory low -> mid.
-- Dry Bones: gray/red/blue Sliding Catch -> Magical Catch; red charge power
+- Dry Bones: gray/red/blue Sliding Catch -> Magical Catch (Wall Splat kept); red charge power
   60 -> 70; all four Boo chemistry 90 (both directions).
 - Baby Mario: speed 70 -> 80, arm 30 -> 40, + Sliding Catch. Baby Luigi: star
   swing grounder -> line drive.
@@ -171,12 +180,12 @@ the draft; Peach has 99 chemistry with everyone, in both directions.
 
 Characters: Mario/Luigi chemistry with each other 99 -> 5. DK nice/perfect spot
 30/15 -> 99/99, charge 80 -> 85. Diddy curveball speed 115 -> 50, fastball
-155 -> 200, curve 80 -> 101. Peach trajectory (0x2E) 2 -> 0. Yoshi and Birdo
+155 -> 200, curve 80 -> 101. Peach vertical trajectory 2 -> 0. Yoshi and Birdo
 swap captain stars. Baby Mario arm 30 -> 80, Baby Luigi arm 30 -> 70, both
-weight 0 -> 9 and Mario/Luigi chemistry 90. Bowser charge 95 -> 99, trajectory
-(0x2D) 1 -> 2, speed 10 -> 40. Wario Body Check + Ball Dash, trajectory (0x2D)
-0 -> 2, captain star -> Waluigi's. Waluigi curve 70 -> 35, no captain star.
-Green Koopa stat bars all 9. All five Toads: chemistry with each other 99 -> 90.
+weight 0 -> 9 and Mario/Luigi chemistry 90. Bowser charge 95 -> 99, horizontal
+trajectory 1 -> 2 (push), speed 10 -> 40. Wario Body Check + Ball Dash, horizontal trajectory
+0 -> 2 (push), captain star -> Waluigi's. Waluigi curve 70 -> 35, no captain star.
+Red Koopa stat bars all 9. All five Toads: chemistry with each other 99 -> 90.
 Boo curve 90 -> 100, DK chemistry 68 -> 90. Toadette arm 40 -> 20. Monty gains
 Super Curve, Body Check, Ball Dash, Super Jump, Quick Throw, Laser. Bowser Jr.
 Super Curve + Body Check, slap 55 -> 56, speed 40 -> 70. Blue Pianta Super Jump
@@ -185,7 +194,7 @@ Mario chemistry 86 -> 90. Yellow Pianta curveball speed 125 -> 105, fastball
 165 -> 205, curve 40 -> 205, speed 10 -> 30. Hammer Bro slap 10 -> 5.
 Toadsworth Laser only, speed 40 -> 80, arm 30 -> 60. Magikoopas + Super Jump.
 King Boo curve 60 -> 99. Petey nice spot 30 -> 40, perfect spot 10 -> 0, speed
-10 -> 80, fielding bar 3 -> 8. Dixie `cursedBall` and `curveControl` 50 -> 99.
+10 -> 80, running bar -> 8. Dixie `cursedBall` and `curveControl` 50 -> 99.
 Goomba arm 30 -> 5. Green Paratroopa curve 60 -> 65. Green Dry Bones
 `cursedBall` 90 -> 10. Fire Bro Super Curve + Body Check, slap 5 -> 45.
 Boomerang Bro Body Check only, slap 20 -> 5.
@@ -199,5 +208,5 @@ Boomerang Bro Body Check only, slap 20 -> 5.
   `FielderHitboxConsts` are declared only inside decomp `.c` files, so the sync
   gives this repo just their `_ADDR`; each code re-declares the type locally.
 - The lefty mirror function around 0x80651100 (game.rel) has no name.
-- `charSelectStruct` (0x803C6028) is an untyped `s8[0x94]`; +0x28..0x4B are
-  initialised to -1 by `css_initValues`.
+- `charSelectStruct` (0x803C6028) is an untyped `s8[0x94]`; +0x28 is the
+  36-square owner table (see docs/import_menu.md, `Include/Rio/CssSquares.h`).

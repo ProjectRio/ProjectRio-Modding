@@ -3,11 +3,7 @@
 ###########################################################*/
 // Author: LittleCoaks
 // Character-select squares: docs/import_menu.md
-#include "Include/static/UnknownHomes_Static.h"
-
-#define BOWSER_SQUARE 11
-#define CssSquareOwner(square)  VAR_ADDRESS(u8, 0x803C6050 + (square))
-#define SQUARE_TAKEN 0
+#include "Include/Rio/CssSquares.h"
 
 // Hooked on the store after Bowser's own square so the reset loop's r0 (-1) is dead across the hook.
 CGECKO(NonCaptainBowserIsBanned, .address = 0x80051318, .instruction = "li r0, -1",
@@ -15,7 +11,6 @@ CGECKO(NonCaptainBowserIsBanned, .address = 0x80051318, .instruction = "li r0, -
                 "Useful as competitive players typically ban non-captain Bowser.");
 void NonCaptainBowserIsBanned(void)
 {
-    CssSquareOwner(BOWSER_SQUARE) = SQUARE_TAKEN;
-    CssSquareOwner(BOWSER_SQUARE + 1) = 0xFF;
-    Static_Stats_Tables.charOnCharacterGridSelected[CHAR_ID_BOWSER] = 1;
+    BanFromDraft(CSS_SQUARE_BOWSER, CHAR_ID_BOWSER);
+    CssSquareOwner(CSS_SQUARE_BOWSER + 1) = SQUARE_FREE;
 }

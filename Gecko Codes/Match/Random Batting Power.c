@@ -2,23 +2,19 @@
 # Random Batting Power
 ###########################################################*/
 // Author: UnclePunch, PeacockSlayer, LittleCoaks
+// Hook site and the skipped second store: docs/import_match_gameplay.md
 #include "Include/game/UnknownHomes_Game.h"
-#include "Include/Rio/TimebaseRandom.h"
+#include "Include/game/math/game_math.h"
 
-#define MAX_POWER "160"
+#define MAX_POWER 160
+#define NOP       0x60000000
+#define STB_R5_POWER1 0x98A40080
 
-/* Both replace a store of hitPower_capped[0] in setDefaultInMemBatter. */
-ASM(RandomBattingPower_A,
-    TIMEBASE_RANDOM_R15(MAX_POWER)
-    "addi   15, 15, 1                 \n"
-    "stb    15, 0x80(4)               \n"
-    TIMEBASE_RANDOM_CLEAR,
-    .address = 0x80653724, .state = MSSB_GAME,
-    .notes = "Every batter's power is randomized, from 1 to 160.");
-
-ASM(RandomBattingPower_B,
-    TIMEBASE_RANDOM_R15(MAX_POWER)
-    "addi   15, 15, 1                 \n"
-    "stb    15, 0x80(3)               \n"
-    TIMEBASE_RANDOM_CLEAR,
-    .address = 0x806536D8, .state = MSSB_GAME);
+CGECKO(RandomBattingPower, .address = 0x806536D8, .state = MSSB_GAME,
+       .notes = "Every batter's power is randomized, from 1 to 160.");
+void RandomBattingPower(void)
+{
+    PatchInstruction_Conditional(0x80653724, STB_R5_POWER1, NOP);
+    g_Batter.hitPower_capped[0] = RandomInt_Game(MAX_POWER) + 1;
+    g_Batter.hitPower_capped[1] = RandomInt_Game(MAX_POWER) + 1;
+}

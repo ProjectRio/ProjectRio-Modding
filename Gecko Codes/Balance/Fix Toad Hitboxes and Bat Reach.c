@@ -11,7 +11,7 @@ typedef struct { s16 v[8]; } FielderHitboxConstsEntry;
 
 #define STOCK_RED_TOAD_HITBOX_0 70
 
-static const s16 TOAD_FIELDING_HITBOX[8] = { 120, 80, 50, 185, 80, 336, 90, 50 };
+static const s16 TOAD_FIELDING_HITBOX[8] = { 120, 80, 50, 185, 80, 350, 90, 50 };
 
 #define RED_TOAD_REACH_HORIZONTAL_NEAR 0xBF733333   /* -0.95f */
 #define RED_TOAD_REACH_HORIZONTAL_FAR  0x3F0CCCCD   /*  0.55f */
@@ -19,7 +19,8 @@ static const s16 TOAD_FIELDING_HITBOX[8] = { 120, 80, 50, 185, 80, 336, 90, 50 }
 #define RED_TOAD_REACH_VERTICAL_BACK   0x3FE66666   /*  1.80f */
 
 CGECKO(FixToadHitboxesAndBatReach, .state = MSSB_GAME,
-       .notes = "Gives all five Toads the same fielding hitbox and the same bat reach.");
+       .notes = "Makes all five Toads play the same: Red Toad gets the other Toads' larger fielding hitbox,\n"
+                "and the other Toads get Red Toad's longer bat reach.");
 void FixToadHitboxesAndBatReach(void)
 {
     FielderHitboxConstsEntry* redToad = &FielderHitboxConsts[CHAR_ID_TOAD_RED];

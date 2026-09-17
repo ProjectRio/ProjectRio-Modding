@@ -14,7 +14,6 @@ void RemoveSliceFrame2Stars(void)
         {0, 1,  2, -600},
         {1, 1,  2, -600},
         {2, 1,  2, -550},
-        {2, 0, 10,  700},
     };
     if (SliceAnglesUntouched())
         ApplySliceAngles(fouls, sizeof(fouls) / sizeof(fouls[0]));

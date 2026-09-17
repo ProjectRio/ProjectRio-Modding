@@ -1,11 +1,11 @@
 /*###########################################################
-# Ban Batter Pausing
+# Restrict Batter Pausing
 ###########################################################*/
 // Author: LittleCoaks
 #include "Include/game/UnknownHomes_Game.h"
 
 // ASM: replaces the batter's pause-button read, whose result must come back in r0.
-ASM(BanBatterPausing,
+ASM(RestrictBatterPausing,
     "lis   6, 0x8089         \n"
     "ori   6, 6, 0x099D      \n"   /* g_Batter.swingInd */
     "lbz   0, 0(6)           \n"

@@ -9,25 +9,13 @@ gated on `MSSB_GAME`.
 
 ## Input Prediction
 
-Successor of `Batter Lag Reduction & Positional Correction` (see
-`docs/match_codes.md` for the batting half: same four sites `0x80651D48`,
-`0x80652360`, `0x80652D00`, `0x80652D9C`, the same two `cmpwi` patches and the
-same `hittableFrameInd[0][1]` write, the same claimed words). The two cannot be
-enabled together. Differences found while importing:
-
-- **The gate is `22`, not a 16-bit compare.** `2289091C 00000000` is gecko's
-  32-bit *if not equal*: the swing pieces apply while the word at
-  `g_Batter.batPosition.y` is **non-zero**. The earlier conversion read it as
-  "upper halfword == 0", which is the opposite sense. Gecko `if`s only gate the
-  per-frame writes and the *installation* of a C2; once installed a hook stays
-  until the REL reloads. So here only the per-frame patches test the word and
-  the hooks run unconditionally, as the hex blobs do.
-- **Box movement, Z axis.** When the previous position does not match, the hex
-  resets the previous change from `-4(base)`, which for the Z hook is the X
-  change word rather than the 0.0f at `0x802EBF9C`. Kept. The register hygiene
-  fixes of the earlier conversion (r8/f12/f13 and a stack slot instead of
-  r19/f28/f29 zeroed afterwards and a 2.0f written into `g_Batter + 0x20`) are
-  carried over.
+The batting half is `Gecko Codes/Match/BattingPrediction.h`, shared with
+`Batter Lag Reduction & Positional Correction` and described in
+`docs/match_codes.md` (sites `0x80651D48`, `0x80652360`, `0x80652D00`,
+`0x80652D9C`, the two `cmpwi` patches, `hittableFrameInd[0][1]`, the same
+claimed words). Both codes hook the same sites: enable one, never both. The
+in-service hex of this code carried the same Z-axis reset bug and register
+clobbers the shared header fixes.
 
 Pitching half (new):
 
@@ -42,10 +30,12 @@ Pitching half (new):
   the sum of its value after the first and after the second call (kept in the
   claimed word `0x802EBFB4`): the new input is applied a frame early. r0 and
   f0-f3 are reloaded right after the site.
-- Original bug, kept: the controller is indexed with `lbz 0xEC(g_GameLogic)`,
-  the **top byte** of the u32 `teams[0]`, which is always 0, so the prediction
-  always reads port 1's buttons. (A dead `slwi r6, r6, 4` next to it shows the
-  port-times-16 indexing that was intended.)
+- The controller read is the pitching player's:
+  `g_GameLogic.teams[g_GameLogic.teamFielding]` is the fielding side's port;
+  4 and up is a CPU, for which the hook does nothing. The in-service hex
+  indexed with `lbz 0xEC(g_GameLogic)`, the top byte of the u32 `teams[0]`,
+  which is always 0, so it always read port 1 (a dead `slwi r6, r6, 4` beside
+  it shows the intended port-times-16 indexing). Fixed.
 
 ## Dash Glitch Fix (per frame)
 
@@ -61,7 +51,7 @@ stride puts s16 fields on odd addresses); only record 0 is used here.
 The site is `stw r0, 0(r31)`, the store of `Inning = r3 + 1` on the
 bottom-to-top path only, so it fires once per new inning. r0 is the value, so
 the C body does the store itself from r3 and has no `.instruction`. The hex
-tests the low byte of the inning. Star counts are restored from
+tested only the low byte of the inning; the C compares the whole value. Star counts are restored from
 `Static_Stats_Tables.startingChemStars` (`0x803530AF`).
 
 ## Runners Score At Random Bases (`0x8069C6E8`, inningChange+0x6C)
@@ -90,7 +80,8 @@ chance byte; below it `IsStarChance` is set. Replaced by `cmpwi r3, 75`.
 
 ## Always 0 outs, 0 balls, 0 strikes
 
-`g_Strikes.strikes/balls/outs` are s32; the hex writes only byte 3 of each.
+`g_Strikes.strikes/balls/outs` are s32. The hex wrote only byte 3 of each;
+the C clears the whole field.
 
 ## Remove Baserunning Lockouts (`0x807B625A`)
 
@@ -102,10 +93,10 @@ that constant (30 -> 1) permanently. Rio's built-in `Remove Baserunner Lockout`
 hooks the read instead and only substitutes 1 while `g_Ball.ballState == 0`.
 Same value, so with both on the built-in's condition no longer matters.
 
-## No Batter Pausing (`0x806EED5C`, match_checkForPause)
+## Ban Batter Pausing (`0x806EED5C`, match_checkForPause)
 
 `lhz r0, 6(r4)` is the batter's new-button read; `li r0, 0` means START is
-never seen. `Ranked/Ban Batter Pausing.c` is a C2 at the same address (pause
+never seen. `Ranked/Restrict Batter Pausing.c` is a C2 at the same address (pause
 allowed while standing still); one of the two wins depending on order.
 
 ## Stadium object placement tables (`Include/Rio/StadiumObjects.h`)
@@ -126,9 +117,9 @@ loops over these records.
 ## Hazardless w Star Pads on Bowser's Castle (`0x80699508`)
 
 Same hook and the same patches as `Hazardless Stadiums`
-(`docs/match_codes.md`), plus the per-frame thwomp burial above. In the hex
-the Yoshi / Peach / DK patches are applied on every stadium rather than per
-stadium; kept.
+(`docs/match_codes.md`), plus the per-frame thwomp burial above. The hex
+applied the Yoshi / Peach / DK patches on every stadium and buried the thwomps
+on every stadium; the C does each only on its own stadium.
 
 ## Remove Bowser Castle Screen Shake (`0x80702B34`, thwomp_screenShake)
 

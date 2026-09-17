@@ -3,14 +3,12 @@
 ###########################################################*/
 // Author: UnclePunch, PeacockSlayer, LittleCoaks
 #include "Include/game/UnknownHomes_Game.h"
-#include "Include/Rio/TimebaseRandom.h"
+#include "Include/game/math/game_math.h"
 
-#define STAR_SWING_COUNT "13"
-
-/* ASM: r0 carries noncaptainStarSwing across the site. */
-ASM(RandomStarSwing,
-    TIMEBASE_RANDOM_R15(STAR_SWING_COUNT)
-    "stb    15, 0x87(4)               \n"   /* g_Batter.captainStarHitPitch */
-    TIMEBASE_RANDOM_CLEAR,
-    .address = 0x806AD0B8, .state = MSSB_GAME,
-    .notes = "Star swings are randomized.");
+/* Replaces the stat-table load whose value the game stores as g_Batter.captainStarHitPitch. */
+CGECKO(RandomStarSwing, .address = 0x806AD0B0, .state = MSSB_GAME,
+       .notes = "Star swings are randomized.");
+void RandomStarSwing(void)
+{
+    WRITE_GAME_REG(8, RandomInt_Game(CAPTAIN_STAR_TYPE_DAISY) + CAPTAIN_STAR_TYPE_MARIO);
+}

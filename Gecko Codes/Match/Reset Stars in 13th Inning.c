@@ -18,7 +18,7 @@ void ResetStarsIn13thInning(void)
     READ_GAME_REG(s32, finishedInning, 3);
 
     g_Scores.Inning = finishedInning + 1;
-    if ((u8)g_Scores.Inning != RESET_INNING)
+    if (g_Scores.Inning != RESET_INNING)
         return;
 
     g_GameLogic.TeamStars[0] = Static_Stats_Tables.startingChemStars[0];

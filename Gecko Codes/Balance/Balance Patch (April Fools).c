@@ -4,11 +4,8 @@
 // Author: PeacockSlayer, LittleCoaks
 // Full change log, the Bowser draft hook, and the writes that disagree with the log: docs/import_balance.md
 #include "Include/Rio/StatEdits.h"
-#include "Include/Symbols/dol.h"
-
+#include "Include/Rio/CssSquares.h"
 #include "Gecko Codes/Balance/SuperJump.h"
-
-#define CSS_ROSTER_BYTE_40         VAR_ADDRESS(u8, charSelectStruct_ADDR + 0x40)
 
 static const u8 REMOVED_CHARACTERS[] = {
     CHAR_ID_SHYGUY_RED, CHAR_ID_SHYGUY_BLUE, CHAR_ID_SHYGUY_YELLOW, CHAR_ID_SHYGUY_GREEN, CHAR_ID_SHYGUY_BLACK,
@@ -64,10 +61,6 @@ static const StatEdit APRIL_FOOLS_PATCH[] = {
     STAT(CHAR_ID_WALUIGI, CaptainStarHitPitch, CAPTAIN_STAR_TYPE_NONE),
     CHEMISTRY(CHAR_ID_WALUIGI, CHAR_ID_PEACH, 99),
 
-    STAT(CHAR_ID_KOOPA_GREEN, BattingStatBar, 9),
-    STAT(CHAR_ID_KOOPA_GREEN, PitchingStatBar, 9),
-    STAT(CHAR_ID_KOOPA_GREEN, RunningStatBar, 9),
-    STAT(CHAR_ID_KOOPA_GREEN, FieldingStatBar, 9),
     CHEMISTRY(CHAR_ID_KOOPA_GREEN, CHAR_ID_PEACH, 99),
 
     CHEMISTRY(CHAR_ID_TOAD_RED, CHAR_ID_PEACH, 99),
@@ -170,7 +163,7 @@ static const StatEdit APRIL_FOOLS_PATCH[] = {
     STAT(CHAR_ID_PETEY, SlapContactSize, 40),
     STAT(CHAR_ID_PETEY, ChargeContactSize, 0),
     STAT(CHAR_ID_PETEY, Speed, 80),
-    STAT(CHAR_ID_PETEY, FieldingStatBar, 8),
+    STAT(CHAR_ID_PETEY, RunningStatBar, 8),
     CHEMISTRY(CHAR_ID_PETEY, CHAR_ID_PEACH, 99),
 
     STAT(CHAR_ID_DIXIE, cursedBall, 99),
@@ -182,6 +175,10 @@ static const StatEdit APRIL_FOOLS_PATCH[] = {
 
     CHEMISTRY(CHAR_ID_PARAGOOMBA, CHAR_ID_PEACH, 99),
 
+    STAT(CHAR_ID_KOOPA_RED, BattingStatBar, 9),
+    STAT(CHAR_ID_KOOPA_RED, PitchingStatBar, 9),
+    STAT(CHAR_ID_KOOPA_RED, RunningStatBar, 9),
+    STAT(CHAR_ID_KOOPA_RED, FieldingStatBar, 9),
     CHEMISTRY(CHAR_ID_KOOPA_RED, CHAR_ID_PEACH, 99),
 
     STAT(CHAR_ID_PARATROOPA_GREEN, Curve, 65),
@@ -217,7 +214,7 @@ void BalancePatchAprilFools(void)
     for (int i = 0; i < (int)LEN(REMOVED_CHARACTERS); i++)
         Static_Stats_Tables.charOnCharacterGridSelected[REMOVED_CHARACTERS[i]] = 1;
 
-    CSS_ROSTER_BYTE_40 = 0;
+    CssSquareOwner(CSS_SQUARE_SHYGUY) = SQUARE_TAKEN;
 }
 
 CGECKO(AprilFoolsSuperDuperJump, .state = MSSB_GAME);
@@ -226,12 +223,10 @@ void AprilFoolsSuperDuperJump(void)
     SetSuperJumpGravity(SUPER_DUPER_JUMP_GRAVITY);
 }
 
-ASM(BanNonCaptainBowser,
-    "li    0, 0\n"
-    "stb   0, 0x33(5)\n"
-    "li    0, 1\n"
-    "lis   31, 0x8035\n"
-    "ori   31, 31, 0x3100\n"   /* charOnCharacterGridSelected[CHAR_ID_BOWSER] */
-    "stb   0, 0(31)\n"
-    "li    0, -1\n",
-    .address = 0x80051314);
+// Same hook as Gecko Codes/Menu/Non-captain Bowser is banned.c; enable only one of the two.
+CGECKO(AprilFoolsBanNonCaptainBowser, .address = 0x80051318, .instruction = "li r0, -1");
+void AprilFoolsBanNonCaptainBowser(void)
+{
+    BanFromDraft(CSS_SQUARE_BOWSER, CHAR_ID_BOWSER);
+    CssSquareOwner(CSS_SQUARE_BOWSER + 1) = SQUARE_FREE;
+}

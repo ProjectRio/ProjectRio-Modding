@@ -34,17 +34,26 @@ void HazardlessStarPads(void)
         PatchInstruction(0x807056C8, LI_R3_0);      /* flameControl */
         PatchInstruction(0x80706D00, LI_R0_0);      /* thwomp_slamControl */
         break;
-    }
 
-    PatchInstruction(0x80724428, LI_R0_7);          /* loadYoshiPark */
-    PatchInstruction(0x80739A28, LI_R0_7);          /* loadPeachGarden */
-    PatchInstruction(0x80736D08, LI_R0_7);          /* loadDKJungle */
-    PatchInstruction(0x807343A4, NOP);              /* handleBarrelFiring */
-    PatchInstruction(0x807343B0, NOP);
+    case STADIUM_ID_YOHSI_PARK:
+        PatchInstruction(0x80724428, LI_R0_7);      /* loadYoshiPark */
+        break;
+
+    case STADIUM_ID_PEACH_GARDEN:
+        PatchInstruction(0x80739A28, LI_R0_7);      /* loadPeachGarden */
+        break;
+
+    case STADIUM_ID_DK_JUNGLE:
+        PatchInstruction(0x80736D08, LI_R0_7);      /* loadDKJungle */
+        PatchInstruction(0x807343A4, NOP);          /* handleBarrelFiring */
+        PatchInstruction(0x807343B0, NOP);
+        break;
+    }
 }
 
 CGECKO(HazardlessStarPads_BuryThwomps, .state = MSSB_GAME);
 void HazardlessStarPads_BuryThwomps(void)
 {
-    Thwomps_SetHeight(THWOMP_BURIED_Y);
+    if (g_d_GameSettings.StadiumID == STADIUM_ID_BOWSERS_CASTLE)
+        Thwomps_SetHeight(THWOMP_BURIED_Y);
 }

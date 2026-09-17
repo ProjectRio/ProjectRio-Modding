@@ -80,7 +80,13 @@ the synced header's `PADStatus pads[4]` at that offset is wrong and should be
 fixed in the decomp. Both codes above depend on the 8-byte stride and, for the
 L + Z test, on bit 7 being set (`& 0xD0 == 0xD0`).
 
-## Batter Lag Reduction & Positional Correction
+## Batter Lag Reduction & Positional Correction (`BattingPrediction.h`)
+
+The implementation lives in `Gecko Codes/Match/BattingPrediction.h` and is
+shared with `Input Prediction.c`, which adds a pitching half
+(`docs/import_match_rules.md`). Each `.c` only supplies its player description
+(`BATTING_PREDICTION_NOTES`) before including the header. The two codes hook
+the same sites, so only one of them may be enabled at a time.
 
 Converted from a hand-written ini. The ini wrapped the three lag-reduction
 pieces (not the positional correction) in `2289091C 00000000`, a 32-bit
