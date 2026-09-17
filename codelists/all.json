@@ -1,14 +1,14 @@
 {
     "name": "All",
-    "description": "Every gecko code in the repo, in one ini, all switched OFF. It is a catalog to pick from in Rio's Gecko Codes list, not a configuration: plenty of these codes contradict each other (three ways to boot, two fielder-select versions, test harnesses), so turning the whole thing on would not survive a boot.",
+    "description": "Every gecko code in the repo, in one ini, all switched OFF. It is a catalog to pick from in Rio's Gecko Codes list, not a configuration: plenty of these codes contradict each other (three ways to boot, test harnesses), so turning the whole thing on would not survive a boot.",
     "folders": ["Gecko Codes"],
     "enabled": false,
     "exclude": [
-        "Gecko Codes/Ranked/Skip Memory Card Check.ini"
+        "Gecko Codes/Ranked/Skip Memory Card Check.c"
     ],
     "_notes": [
-        "The exclude is a name collision: cgecko keys an ini entry by name, so shipping",
-        "both copies would silently drop one. Skip Memory Card Check.ini is the",
-        "Rio Built-in copy apart from one description line."
+        "Skip Memory Card Check.c is the Rio Built-in 'Skip Memory Card Check on Main",
+        "Menu' code under a second name (one description line differs), so the catalog",
+        "lists that code once."
     ]
 }

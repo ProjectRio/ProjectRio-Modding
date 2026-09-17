@@ -12,6 +12,15 @@
 #include "RioModPack/Online Menu.c"
 #include "Gecko Codes/Global/Boot To Main Menu.c"
 
+// Rio's start-of-match cue: the unused bat SFX replaces the stock one.
+#define RIO_BAT_SFX 0x1BB
+CGECKO(BatSoundOnGameStart, .address = 0x80042CD0,
+       .notes = "A bat crack plays when a match starts.");
+void BatSoundOnGameStart(void)
+{
+    WRITE_GAME_REG(3, RIO_BAT_SFX);
+}
+
 // Self-gates: patches game code, so it must keep running while OFF to restore it.
 #undef  CGECKO_OPTION_ADDR
 #define CGECKO_OPTION_ADDR MODOPT_ADDR(MODOPT_DUPLICATES)

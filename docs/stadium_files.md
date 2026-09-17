@@ -1,7 +1,7 @@
 # Stadium files and the stadium-select write
 
 Used by: `Gecko Codes/Match/Stadium Asset Swap.c`,
-`Gecko Codes/Menu/Nighttime Mario Stadium.c`.
+`Gecko Codes/Menu/Nighttime Mario Stadium.c`, `Gecko Codes/Menu/Toy Field Exhibition.c`.
 
 ## How the game picks a stadium file
 
@@ -78,8 +78,14 @@ off mid-session instead of only at boot).
 The stadium-select screen writes the chosen stadium into the match-setup
 struct:
 
+    0x8065066C  li  r0, 1          <- Toy Field Exhibition hook (r5 = stadium id, r4 = setup)
     0x80650674  stb r5, 9(r4)      stadium id
-    0x80650678  stb r0, 0x58(r3)   <- hook site, r4 still the setup struct
+    0x80650678  stb r0, 0x58(r3)   <- Nighttime hook site, r4 still the setup struct
+
+r0 is live from `li r0, 1` to the `stb r0, 0x58(r3)`, so a C-wrapped hook (which
+clobbers r0) cannot sit on the stadium-id store itself; Toy Field Exhibition
+hooks the `li` and lets it re-run as its `.instruction`. The same liveness
+applies to the `0x80650678` site.
 
 The byte right after the stadium id, +0xA, is the day/night flag the stadium
 loader reads (0 = day, 1 = night). Mario Stadium is id 0 and the only stadium

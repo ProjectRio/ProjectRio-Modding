@@ -1,6 +1,6 @@
 # Netplay desync checksum
 
-Used by: `Gecko Codes/Rio Built-in/Checksum.asm` (hook at `0x8000928C`,
+Used by: `Gecko Codes/Rio Built-in/Checksum.c` (hook at `0x8000928C`,
 re-issues `cmplwi r24, 0x0`).
 
 Every frame the code sums a set of game-state variables into one word at
@@ -61,6 +61,24 @@ In-game state (one byte each unless noted):
 | `0x80890B3C` | ball pos Y (word)       |
 | `0x80890B40` | ball pos Z (word)       |
 
-The menu/team sections use the `Common.s` macros (`backup_nv`, `loadhz`,
-`load`, `restore_nv`); the in-game section is still written out with explicit
-`lis/ori/lbz` and could be moved to the macros.
+## Quirks the C version keeps on purpose
+
+The sum has to stay bit-identical across every client, so the C port keeps
+the exact bytes the asm read even where they are odd:
+
+- "away/home team runs" (`0x808928A4` / `0x808928CA`) are the HIGH bytes of
+  `g_Scores.scores[0].total` / `scores[1].total` (s16), not the run counts.
+- inning, balls, strikes, outs and both roster ids are the low byte of a
+  wider field (`(u8)` casts in the source).
+- the superstar loop reads 18 bytes from `charIsStarred[9]`, so it runs 9
+  bytes past that array into whatever follows in `Static_Stats_Tables`.
+- "runner on 1st/2nd/3rd" is `g_Runners[1..3] + 0x131`, which the decomp
+  currently names `runnerDidntReachOnError`.
+- "play is ready to start" (`0x808909AA`) is `g_Batter.noSwingAnimationInd`
+  in the decomp.
+
+Not yet named in the decomp (bound with `#define`s in `Checksum.c`):
+`0x80892857` pickoff attempt, `0x8036F3A9` game is live
+(`hugeAnimStruct + 0xE61`), `0x80872540` is replay (`g_Camera + 0xAD4`),
+`0x808938AD` outs during play (`animRelated + 0xA9`), `0x80893BAA` final
+result (also cleared by `Clear Hit Result`).

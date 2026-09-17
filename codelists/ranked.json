@@ -5,10 +5,9 @@
     "enabled": true,
     "exclude": [],
     "_notes": [
-        "Nothing is excluded, so the folder currently ships BOTH Manual Fielder Select",
-        "v4.1 and v5.0 plus the in-progress C port, and all three patch 0x80678F8C.",
-        "They build fine and their gecko names differ, so nothing here can catch it --",
-        "the fix is to drop the superseded files from the folder (or move them out of",
-        "Ranked/), not to list exceptions here."
+        "Manual Fielder Select.c is the only code here that hooks 0x80678F8C: the v4.1 and",
+        "v5.0 .asm files and the half-finished C port that all shared that site were",
+        "folded into it (v5 behaviour). Keep it that way -- cgecko keys codes by name, so",
+        "two files hooking one site build fine and silently fight at runtime."
     ]
 }

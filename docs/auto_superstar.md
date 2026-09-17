@@ -1,6 +1,6 @@
 # Auto Superstar
 
-Used by: `Gecko Codes/Menu/autoSuperstar.asm` (hook at `0x8005A4F4`, the
+Used by: `Gecko Codes/Menu/Auto Superstar.c` (hook at `0x8005A4F4`, the
 team-management superstar walk).
 
 The code walks each team's roster cursor and, for every character flagged for
@@ -26,7 +26,14 @@ Requirements:
 
 Game state it touches: the team-management cursor at `0x80336726 + team`,
 and the "superstarring in progress" byte at `0x8033677E + team`, which the game
-reads to apply the superstar to the character under the cursor.
+reads to apply the superstar to the character under the cursor. Both are
+indexed by team (`byte + team`), so P2's in-progress byte is `0x8033677F`;
+the decomp header currently types `inProgress_superStarAPlayer` as a single
+byte.
+
+The old asm used r24 as scratch. `battingOrderProcessInputs` (the hooked
+function, `0x8005A350`) only saves r26-r31, so that clobbered the caller's
+r24; the C body keeps every register.
 
 Note: the Auto-Superstar walk does not fire in a force-swap boot (Instant
 Randoms / Boot To Match); those drive `transferStatsToInMemRoster` directly
