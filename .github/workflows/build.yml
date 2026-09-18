@@ -85,8 +85,12 @@ jobs:
       - name: Build and package every code list
         run: python3 BuildCodeList.py --zip --summary dist/RELEASE_NOTES.md
 
+      # Just the table (list name, code count, state, size) -- the full
+      # per-code bullet lists in RELEASE_NOTES.md are an extremely long read
+      # for a CI summary, and that information already lives in the build
+      # artifacts (gecko_codes.txt/json) for anyone who needs it.
       - name: Show what was built
-        run: cat dist/RELEASE_NOTES.md >> "$GITHUB_STEP_SUMMARY"
+        run: awk '/^### /{exit} {print}' dist/RELEASE_NOTES.md >> "$GITHUB_STEP_SUMMARY"
 
       # Loose copies under list-specific names, so the release can carry them
       # as individual assets with a stable URL each.
