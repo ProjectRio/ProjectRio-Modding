@@ -167,7 +167,10 @@ jobs:
             echo "Rio applies its Sys ini and your user ini both, so a code kept in each runs"
             echo "twice and hangs the boot."
             echo
-            cat dist/RELEASE_NOTES.md
+            # Just the table: the full per-code bullet lists are an extremely
+            # long read here too, and that information is already in the
+            # downloadable .txt/.json exports and each zip's own README.
+            awk '/^### /{exit} {print}' dist/RELEASE_NOTES.md
           } > notes.md
 
           # Replace the rolling release outright rather than uploading over it:
