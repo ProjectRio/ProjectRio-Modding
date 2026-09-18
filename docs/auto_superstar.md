@@ -1,7 +1,7 @@
 # Auto Superstar
 
 Used by: `Gecko Codes/Menu/Auto Superstar.c` (hook at `0x8005A4F4`, the
-team-management superstar walk, plus a second hook at `0x80048764` that
+team-management superstar walk, plus a second hook at `0x800625A4` that
 restarts it on every screen entry).
 
 The code marks every character on both teams for superstardom, then walks
@@ -25,19 +25,36 @@ Requirements:
    not started (incremented once to give superstar codes a chance to load),
    1..9 = the roster slot being starred, 0xA = done, park the cursor at 0;
    0xB = nothing left to do. This is claimed scratch memory, not a real game
-   field, so nothing resets it on its own between visits -- it only defaults
-   to 0 once, at boot.
+   field, so nothing resets it on its own -- it needs an explicit "team
+   management was just entered" trigger, or the walk only ever completes
+   once, on the first visit after boot.
 
-   `createTeamManagementScreen_preGame` (`0x80048764`) is the game's own
-   screen-creation callback for team management (verified live: its first
-   instruction is `stwu r1, -0x10(r1)`, `0x9421fff0`); it also resets a few
-   sibling fields in the same struct as the cursor/in-progress bytes above,
-   which is how it was identified. Hooking its entry to reset both progress
-   bytes back to 0 is what makes the walk restart every time the screen is
-   (re-)entered, e.g. backing out to character select and returning -- not
-   just the first time after boot. Only the pre-game create path is hooked;
-   the mid-match `createTeamManagementScreen_inGame` (`0x800486E0`) is left
-   alone, so manual mid-game roster edits aren't clobbered by a restart.
+   That trigger is `updateCharacterSelectProcessCode(team, code)`
+   (`0x800625A4`, decomp: `File_0x800625a4.c`/`.h`): a "post a menu process
+   code" call used throughout the unreversed captain-select/team-management
+   flow. Verified live: `code == 0x38` is posted once per team (twice total)
+   every time team management is (re-)entered, including a revisit after
+   backing out to character select -- unlike every other candidate tried
+   (see "Dead ends" below). Hooking its entry to reset both progress bytes
+   on `code == 0x38` is what makes the walk restart on every (re-)entry.
+
+   Dead ends tried first, for anyone who hits the same wall again:
+    - Hooking `createTeamManagementScreen_preGame` (`0x80048764`) directly.
+      Confirmed live via a diagnostic counter that this function's entry is
+      invoked continuously, every frame, for the entire time the screen is
+      active (not once on entry) -- its own one-shot counter only gates its
+      *body*, which is why it needs one at all. A hook at its entry resets
+      the progress byte every frame, so the walk index can never advance
+      past 0: this broke starring entirely, including the first visit, not
+      just the restart.
+    - The first live capture of `updateCharacterSelectProcessCode` codes
+      ended in a run of distinct high values (0x3B-0x3F) right before
+      team management appeared, and `0x3F` looked like the trigger -- but a
+      second capture on a revisit showed only `0x38, 0x38` with none of the
+      higher codes at all. Those higher codes are one-time load/setup steps
+      that don't repeat, the same trap as the function-entry approach above,
+      just relocated. `0x38` was the only thing posted on both a first visit
+      and a revisit, confirmed by testing the actual reset on it.
 
 Game state it touches: the team-management cursor at `0x80336726 + team`,
 and the "superstarring in progress" byte at `0x8033677E + team`, which the game

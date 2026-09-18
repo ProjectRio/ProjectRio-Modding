@@ -21,6 +21,10 @@
     // The head of lbl_802EAF80 was previously unclaimed. 0x802EAF90-0x802EB83F (2224 bytes) was
     // verified live 2026-08-28 as all-zero and unchanging while the game ran, so it is claimable;
     // 0x802EB840-0x802EBF8B is NOT zero and was left alone.
+    // CORRECTION 2026-09-17 (Auto Superstar revisit-fix session): that verification does not hold
+    // for the whole range. Live in team management, 0x802EB800-0x802EB83F held non-zero, changing,
+    // pointer-looking data (e.g. a word reading 0x80000000, another 0x803Cxxxx) -- do not claim
+    // anything past ~0x802EB7FF without re-verifying live in the specific screen you care about.
 
     "0x802EBF8C" : "(w) -- GameID",
     "0x802EBF91" : "(b) -- Initialize stored port info for P1",

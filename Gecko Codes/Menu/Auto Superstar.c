@@ -45,13 +45,19 @@ void AutoSuperstar(void)
     SuperstarIndex(team) = index + 1;
 }
 
-// reset the walk every time the team-management screen is entered
-// via a second hook within createTeamManagementScreen_preGame
-CGECKO(AutoSuperstarRestart, .address = 0x80048764, .instruction = "stwu r1, -0x10(r1)",
+// updateCharacterSelectProcessCode(team, code): posted once per team (so
+// twice) every time team management is (re-)entered, code 0x38 = one time on entry
+// allows code to be reset in case of backing out on the menu
+CGECKO(AutoSuperstarRestart, .address = 0x800625A4, .instruction = "stwu r1, -0x10(r1)",
        .notes = "Restarts the superstar walk above whenever the team-management\n"
-                "screen is entered.");
+                "screen is (re-)entered.");
 void AutoSuperstarRestart(void)
 {
-    SuperstarIndex(0) = INDEX_NOT_STARTED;
-    SuperstarIndex(1) = INDEX_NOT_STARTED;
+    READ_GAME_REG(int, code, 4);
+
+    if (code == 0x38)
+    {
+        SuperstarIndex(0) = INDEX_NOT_STARTED;
+        SuperstarIndex(1) = INDEX_NOT_STARTED;
+    }
 }
