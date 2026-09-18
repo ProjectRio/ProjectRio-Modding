@@ -17,14 +17,17 @@
 #define SuperstarIndicator(team, slot) inMemRoster[team][slot].stats.UnusedBytes[0]
 
 CGECKO(AutoSuperstar, .address = 0x8005A4F4, .instruction = "lis r3, -0x7FCD",
-       .notes = "Automatically applies superstar status to the marked characters when a\n"
-                "team loads. Meant to be driven by other tools, not turned on by itself.");
+       .notes = "Superstars every character on both teams as the team-management\n"
+                "screen walks its roster.");
 void AutoSuperstar(void)
 {
     READ_GAME_REG(int, team, 27);
 
     if (team > 1)
         return;
+
+    for (int slot = 0; slot < 9; slot++)
+        SuperstarIndicator(team, slot) = 1;
 
     u8 index = SuperstarIndex(team);
 
@@ -40,4 +43,15 @@ void AutoSuperstar(void)
     }
 
     SuperstarIndex(team) = index + 1;
+}
+
+// reset the walk every time the team-management screen is entered
+// via a second hook within createTeamManagementScreen_preGame
+CGECKO(AutoSuperstarRestart, .address = 0x80048764, .instruction = "stwu r1, -0x10(r1)",
+       .notes = "Restarts the superstar walk above whenever the team-management\n"
+                "screen is entered.");
+void AutoSuperstarRestart(void)
+{
+    SuperstarIndex(0) = INDEX_NOT_STARTED;
+    SuperstarIndex(1) = INDEX_NOT_STARTED;
 }
