@@ -37,7 +37,7 @@ bool GetActivePorts(int* fielder_port_out, int* batter_port_out)
     int number_PAs = 0;
     for (int i = 0; i <= 8; i++)
     {
-        number_PAs += Static_Stats_Tables.batterStats[bat_team][i].plateAppearances;
+        number_PAs += BatterStats_P1_P2[bat_team][i].plateAppearances;
     }
 
     // replay_atBat counts as at-bat: the HUD icon hooks can run during replays

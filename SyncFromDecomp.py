@@ -135,6 +135,7 @@ PLACEHOLDER_SYM = re.compile(
     r"^(fn_\d+_[0-9A-Fa-f]+|fn_[0-9A-Fa-f]{6,}|lbl_|auto_|pad_|@|__?\d)")
 
 IDENT_RE = re.compile(r"[A-Za-z_]\w*")
+C_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 
 # game and menus occupy the same arena slot and are mutually exclusive, so their
 # bindings must never be in scope at the same time.
@@ -557,7 +558,7 @@ def rewrite_header(text, syms, stats, unresolved, relpath, dupes=frozenset()):
             stats["macros_suppressed"] += 1
             continue
         stripped = line.split("//")[0]
-        m = EXTERN_RE.match(line)
+        m = EXTERN_RE.match(stripped)
         if m and m.group("name") in syms and syms[m.group("name")][1] == "data":
             rep = rewrite_extern(m, syms[m.group("name")][0])
             if rep:
@@ -571,7 +572,7 @@ def rewrite_header(text, syms, stats, unresolved, relpath, dupes=frozenset()):
             continue
 
         if not NOT_PROTO.match(line):
-            m = PROTO_RE.match(line)
+            m = PROTO_RE.match(stripped)
             if m:
                 name = m.group("name")
                 if name in syms and syms[name][1] == "func":
@@ -699,7 +700,7 @@ def main():
 
     # Everything the decomp names but never declares, emitted as a raw address
     # so no symbol the decomp knows about is unreachable from a mod.
-    declared = set(IDENT_RE.findall("\n".join(generated_text)))
+    declared = set(IDENT_RE.findall(C_COMMENT_RE.sub(" ", "\n".join(generated_text))))
     meta = build_symbol_meta(decomp, cvt)
     bound = emit_symbol_headers(meta, declared, args.dry_run)
     if bound:
