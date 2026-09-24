@@ -141,6 +141,14 @@ static const BootMatchPayload boot_payload =
 // claimed free memory: post-start outs-burst frame counter (shared with Boot Directly To Game; never run together)
 #define tbm_outsCounter VAR_ADDRESS(u8, 0x802EC01A)
 
+// claimed free memory: once-per-session latch. DOL .bss is zeroed at cold boot but not when a
+// REL reloads, so it survives the match -> main menu trip; without it every return to the menu
+// (rel == 4) would stage the boot match all over again.
+#define tbm_bootPhase   VAR_ADDRESS(u8, 0x802EC01F)
+#define TBM_PHASE_IDLE   0   // cold boot: stage the match on the first menu frame
+#define TBM_PHASE_STAGED 1   // boot match is loading / its state is being applied
+#define TBM_PHASE_DONE   2   // handed off; never touch the game again this session
+
 // Runner-on-base staging (1B/2B/3B); the clear instruction is nop'd during the load and restored after.
 #define tbm_runnerRosterLoc(i)  VAR_ADDRESS(u16,  0x8088F04C + (i) * 0x154)
 #define tbm_runnerCharID(i)     VAR_ADDRESS(u16,  0x8088F04E + (i) * 0x154)
@@ -152,8 +160,8 @@ static inline u32 tbm_runnerRestoreInstr(int i) { return (i == 0) ? 0xB0650234 :
 #define TBM_OUTS_BURST_FRAMES 10
 
 
-// Stage the predetermined match and request the swap. Runs once: it flips
-// `rel` to 5 up front, so the per-frame guard keeps it from re-entering.
+// Stage the predetermined match and request the swap. Runs once per session:
+// the caller only stages from TBM_PHASE_IDLE.
 static inline void TestBoot_StageMatch(const BootMatchSpec* s, const BootStateConfig* c)
 {
     ForceSwap_RequestGameRel();
@@ -198,12 +206,16 @@ static inline void TestBoot_StageMatch(const BootMatchSpec* s, const BootStateCo
     tbm_outsCounter = 0;
 }
 
-// Land the match on a specific game state. hasGameStarted_ is 0 only during
-// the boot load, so this never touches a normally-played match.
+// Land the match on a specific game state. Only runs while the boot match is
+// STAGED: hasGameStarted_ is 0 during EVERY match load, so without the phase
+// check a later, normally-played match would be overwritten too.
 static inline void TestBoot_ApplyGameState(const BootStateConfig* c)
 {
     if (!c->apply_state || inningSetting.rel != FORCESWAP_REL_GAME)
+    {
+        tbm_bootPhase = TBM_PHASE_DONE;          // left the boot match (or nothing to apply)
         return;
+    }
 
     if (g_GameLogic.EventTriggers_GameHasStarted == 0)
     {
@@ -277,7 +289,10 @@ static inline void TestBoot_ApplyGameState(const BootStateConfig* c)
 
     // outs go on a few seconds after the start (inline outs silence the BGM)
     if (tbm_outsCounter >= TBM_OUTS_DELAY_FRAMES + TBM_OUTS_BURST_FRAMES)
-        return;                                  // done; hands off the match
+    {
+        tbm_bootPhase = TBM_PHASE_DONE;          // done; hands off the match
+        return;
+    }
     tbm_outsCounter++;
     if (tbm_outsCounter <= TBM_OUTS_DELAY_FRAMES)
         return;                                  // let the BGM get going first
@@ -303,8 +318,16 @@ void TestNewBootMatch()
     OPAQUE_PTR(s);
     OPAQUE_PTR(c);
 
-    if (inningSetting.rel == FORCESWAP_REL_MENU)
+    if (tbm_bootPhase == TBM_PHASE_DONE)
+        return;
+
+    if (tbm_bootPhase == TBM_PHASE_IDLE)
+    {
+        if (inningSetting.rel != FORCESWAP_REL_MENU)
+            return;
         TestBoot_StageMatch(s, c);
+        tbm_bootPhase = TBM_PHASE_STAGED;
+    }
 
     TestBoot_ApplyGameState(c);
 }

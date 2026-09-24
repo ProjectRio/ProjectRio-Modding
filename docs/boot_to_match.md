@@ -164,6 +164,19 @@ written for `TBM_OUTS_BURST_FRAMES` (10) frames, and never once
 `g_Stats.atBatPitchThrown` is set. Counter: `0x802EC01A` (u8), shared with
 Boot Directly To Game's since the two never run together.
 
+### Once per session
+
+Unlike Instant Randoms, Boot To Match must NOT re-boot when the player returns
+to the main menu (a fast reset that restarts on "quit to menu" traps the
+players in the same game). `0x802EC01F` (u8) is a persistent phase in DOL
+.bss, zeroed at cold boot only: 0 = not booted, 1 = staged (staging and the
+game-state writes run), 2 = done (the code does nothing). Staging happens only
+from 0. It goes to 2 when the outs burst finishes, or as soon as `rel` leaves 5
+while staged (the players quit the boot match early). The game-state writes
+also need the guard: `EventTriggers_GameHasStarted` is 0 during EVERY match
+load, so without it the next normally-played match would get the boot state
+too. A console/Dolphin reset re-zeroes .bss, so a reset boots the match again.
+
 ## Boot To Main Menu
 
 ### Part 1: skipping intro and title

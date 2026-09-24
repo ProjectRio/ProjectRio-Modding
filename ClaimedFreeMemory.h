@@ -62,6 +62,7 @@
     "0x802EC01B" : "(b) -- Boot To Main Menu: PERSISTENT card-loaded latch (0 at cold boot only; set after a successful load; survives menu-rel reloads so the load runs once per session)",
     "0x802EC01C" : "(h) -- Boot To Main Menu: silent-load dialog-suppression window frame counter",
     "0x802EC01E" : "(b) -- Boot To Main Menu: per-menu-load probe phase (0=probe, 1=suppression window, 2=idle; re-armed while rel==0)",
+    "0x802EC01F" : "(b) -- Boot To Match: PERSISTENT once-per-session phase (0 = not booted yet, 1 = boot match staged/loading, 2 = done). 0 at cold boot only (DOL .bss); survives menu/game REL reloads so the boot match never restarts when the player returns to the main menu",
 
     "0x802EC020" : "(200 bytes, through 0x802EC0E7) -- ScreenText.h state + glyph buffers for Write Text To Screen (TEXT_BUFFER_ADDR)",
     "0x802EC0E8" : "(392 bytes, through 0x802EC26F) -- ScreenText.h state + glyph buffers for the custom menu scene (Custom Menu Scene / Dictionary Scene; mutually exclusive) (TEXT_BUFFER_ADDR, TEXT_SLOTS 4)",
