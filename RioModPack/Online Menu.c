@@ -24,12 +24,9 @@
 #define ONL_CONTAINER_NTEX  122    // ...and it has this many textures: the sanity check
 #define ONL_TEX_SOURCE      49     // Exhibition Game's label: the record we copy
 #define ONL_TEX_VICTIM      50     // unused on the main menu: becomes the Online label
-#define ONL_PANEL_SOURCE    63     // Toy Field's preview picture: the record we copy
-#define ONL_PANEL_VICTIM    51     // unused on the main menu: becomes the Online picture
+#define ONL_PANEL_TEX       63     // Toy Field's preview picture: shown for Online too
 #define ONL_TEX_W           156
 #define ONL_TEX_H           21
-#define ONL_PANEL_W         357
-#define ONL_PANEL_H         302
 
 #define ONL_ROW_PITCH_Y   MS_F32_NEG(37)   // one (squeezed) row up, in the column's space
 #define ONL_ROW_FIRST_Y   137         // stock row 0's anchor after the squeeze (was 100)
@@ -110,9 +107,9 @@ static void MoveHighlight(u32 item, s32 prev, s32 cur);
 #define ItemRecord MS_Record
 
 // ---- the texture ------------------------------------------------------------
-/* Retarget texture records 50/51 at our pixels and space the column's row
+/* Retarget texture record 50 at our label and space the column's row
  * anchors for eight rows. Idempotent; refuses an unexpected container. */
-static int PatchOnlineContainer(const u8* tex, const u8* panel)
+static int PatchOnlineContainer(const u8* tex)
 {
     int i;
     u32 hdr = MS_TextureHeaderOfTag(ONL_CONTAINER_TAG);
@@ -124,14 +121,10 @@ static int PatchOnlineContainer(const u8* tex, const u8* panel)
     src = MS_TEX(hdr, ONL_TEX_SOURCE);
     if (MS_TEX_W(src) != ONL_TEX_W || MS_TEX_H(src) != ONL_TEX_H)
         return 0;
-    if (((u32)tex & 31) || ((u32)panel & 31))
+    if ((u32)tex & 31)
         return 0;                                // the GPU needs 32-byte alignment
 
     MS_RetargetTexture(hdr, ONL_TEX_VICTIM, ONL_TEX_SOURCE, tex, tex + ONLINE_TEX_DATA_SIZE);
-
-    src = MS_TEX(hdr, ONL_PANEL_SOURCE);
-    if (MS_TEX_W(src) == ONL_PANEL_W && MS_TEX_H(src) == ONL_PANEL_H)
-        MS_RetargetTexture(hdr, ONL_PANEL_VICTIM, ONL_PANEL_SOURCE, panel, panel + ONLINE_PANEL_DATA_SIZE);
 
     if (MS_ELEM_COUNT(layout) <= ONL_COLUMN_ELEM)
         return 1;
@@ -173,7 +166,7 @@ static void DropAllRecords(void)
 }
 
 /* Build the Online button under the main-menu node `item`. Creation order is draw order. */
-static void BuildOnlineButton(u32 item, const u8* tex, const u8* panel)
+static void BuildOnlineButton(u32 item, const u8* tex)
 {
     u32 column = ItemRecord(item, H_COLUMN);
     u32 bar    = ItemRecord(item, H_BAR(0));
@@ -186,7 +179,7 @@ static void BuildOnlineButton(u32 item, const u8* tex, const u8* panel)
         R_PARENT(bar) != column || R_PARENT(shine) != bar)
         return;
 
-    if (!PatchOnlineContainer(tex, panel))
+    if (!PatchOnlineContainer(tex))
         return;
 
     g_onlBar = CopyRecord(bar, column);
@@ -242,7 +235,7 @@ void OnlineSceneFrame()
     if (g_onlValid && g_onlAnim)
         OnlineAnimTick();
     if (!g_onlValid && item >= 0x80000000)
-        BuildOnlineButton(item, s_onlineTexture, s_onlinePanel);
+        BuildOnlineButton(item, s_onlineTexture);
 }
 
 // Safety net: free the copies if the scene went away by a route the node hook never saw.
@@ -304,14 +297,14 @@ static void MoveHighlight(u32 item, s32 prev, s32 cur)
     // The picture crossfade: incoming on handle 0x20 from frame 0, outgoing on 0x21 from 10.
     rec = ItemRecord(item, H_PANEL_NEW);
     if (cur >= 0) load_Icon((void*)item, H_PANEL_NEW, 1, ONL_ICON_TABLE, cur);
-    else          R_ICON(rec) = ONL_PANEL_VICTIM;
+    else          R_ICON(rec) = ONL_PANEL_TEX;
     R_FLAGS(rec) |= R_VISIBLE;
     if (prev != ONL_ENTRY)
     {
         R_FRAME(rec) = 0; R_PLAY(rec) = 1;
         rec = ItemRecord(item, H_PANEL_OLD);
         if (prev >= 0) load_Icon((void*)item, H_PANEL_OLD, 1, ONL_ICON_TABLE, prev);
-        else           R_ICON(rec) = ONL_PANEL_VICTIM;
+        else           R_ICON(rec) = ONL_PANEL_TEX;
         R_FLAGS(rec) |= R_VISIBLE; R_FRAME(rec) = PANEL_REST_FRAME; R_PLAY(rec) = 1;
         makeCursorUnmovable(0);
     }

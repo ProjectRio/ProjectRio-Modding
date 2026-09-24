@@ -377,12 +377,14 @@ transition touching -1 is done by the mod and the stock helpers are never told.
 
 ### Textures
 
-Nothing on the main menu uses t50 or t51 (two 10x72 strips). After the
-container loads, record 50 is rewritten to describe the 156x21 C4 label and
-record 51 the 357x302 C8 preview picture (copies of t49's and t63's records
-with our pixel/palette pointers), from `RioModPack/OnlineTexture.h` (generated
-from `assets/Online.png` and `assets/OnlinePanel.png` by `MakeOnlineTexture.py`;
-32-byte aligned). The container has 122 textures, which is the sanity check.
+Nothing on the main menu uses t50 (a 10x72 strip). After the container
+loads, record 50 is rewritten to describe the 156x21 C4 label (a copy of t49's
+record with our pixel/palette pointers), from `RioModPack/OnlineTexture.h`
+(generated from `assets/Online.png` by `MakeOnlineTexture.py`; 32-byte
+aligned). The preview picture is not custom: while Online is selected the
+panel records show stock t63 (Toy Field's picture) as-is, so the only baked
+art is the ~2 KB label. Prefer referencing loaded stock textures like this
+over shipping converted game art. The container has 122 textures, which is the sanity check.
 The container is re-read from disc on every non-resume main-menu entry and the
 patch is redone each time the scene is built, so other screens using entry 1740
 see a stock copy. The icon table for the preview pictures is 0x32.
