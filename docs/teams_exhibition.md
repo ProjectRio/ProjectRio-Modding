@@ -31,18 +31,27 @@ input hook never runs during replays, but the HUD icon hook can.
 
 ## Handing over control (hook 0x806AC530, end of UpdateControllerInputs)
 
-The game reads team 0 from port 0 and team 1 from the drafting port (the
-untouched `teamPorts` values; never write `teamPorts_P1P2`). The hook
-overwrites the read port's `g_Controls` struct (0x10 bytes, copied as four
-words) with the active teammate's. A whole-struct copy keeps
-`newInputOnLatestFrame` edges coherent, since they were computed against the
-source port's own history. The hook freezes during replays: playback feeds
-the recorded inputs back through the unmodified mapping, and copying live
-inputs over them would corrupt the replay.
+The hook writes the active teammate's port into `g_GameLogic.teams[]`, which is
+where the game takes each team's controller from. The Rio client reads the same
+array for autogolf and the player-name display, so no extra bytes are shared
+with it. The drafting ports (port 0 and `PlayerPorts[1]`) are left alone, and
+the active teammate's `g_Controls` struct (0x10 bytes, copied as four words) is
+also copied over the drafting port's, for anything that still reads those. A
+whole-struct copy keeps `newInputOnLatestFrame` edges coherent, since they were
+computed against the source port's own history. During replays the hook puts
+the drafting ports back into `teams[]` and copies nothing: playback feeds the
+recorded inputs through the stock mapping, and copying live inputs over them
+would corrupt the replay.
 
-`0x802EBF94/5` (`autogolf_ports`) receive the active fielder/batter port + 1.
-This is temporary: current Rio client versions read it for autogolf mode;
-remove once the client no longer does.
+The defender switches from pitcher to fielder on the ball-in-play flag
+(`0x8089389B`, set on contact) rather than on the scene change about 30 frames
+later, so the fielder's client gets autogolf control as the play starts. This
+hook runs before the game sets the flag each frame, so `teams[]` trails the
+flag by one frame; the client waits for the same golfer on two frames in a row
+before it asks for a swap.
+
+Remember Who Quit reports `PlayerPorts[team]`, not `teams[team]`, so a quit is
+attributed to the team's drafting port whichever teammate paused.
 
 ## HUD port icons (hook 0x806D8EC0, draw_ongoingStarGuageHud)
 

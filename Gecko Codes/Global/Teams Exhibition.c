@@ -8,13 +8,23 @@
 
 #include "Include/static/UnknownHomes_Static.h"
 #include "Include/Unknown/File_0x800b0a14.h"
-// TEMPORARY: consumed by current Rio client versions for autogolf mode.
-#define autogolf_ports ARRAY_1D_ADDRESS(u8, 2, 0x802EBF94)
+/* The synced header types g_Controls as a pointer; the game keeps four InputStructs here. */
+#define g_ControlsByPort ARRAY_1D_ADDRESS(InputStruct, 4, 0x80893928)
+/* Set from contact until the play ends; the Rio client's autogolf switches to the fielder on it. */
+#define ball_in_play VAR_ADDRESS(u8, 0x8089389B)
 
-// Which physical ports (0-3) should have control right now; false when this
-// isn't a supported teams game.
+// replay_atBat counts as at-bat: the HUD icon hooks can run during replays
 static inline __attribute__((always_inline))
-bool GetActivePorts(int* fielder_port_out, int* batter_port_out)
+bool IsAtBatScene(void)
+{
+    int scene = g_GameLogic.sceneID;
+    return (scene == SCENE_ID_AT_BAT) || (scene == SCENE_ID_REPLAY_AT_BAT);
+}
+
+// Which physical ports (0-3) should have control; false when this isn't a
+// supported teams game. is_at_bat picks the pitcher or the live-ball fielder.
+static inline __attribute__((always_inline))
+bool GetActivePorts(int* fielder_port_out, int* batter_port_out, bool is_at_bat)
 {
     int second_drafter = g_d_GameSettings.PlayerPorts[1];
 
@@ -39,10 +49,6 @@ bool GetActivePorts(int* fielder_port_out, int* batter_port_out)
     {
         number_PAs += BatterStats_P1_P2[bat_team][i].plateAppearances;
     }
-
-    // replay_atBat counts as at-bat: the HUD icon hooks can run during replays
-    int scene = g_GameLogic.sceneID;
-    bool is_at_bat = (scene == SCENE_ID_AT_BAT) || (scene == SCENE_ID_REPLAY_AT_BAT);
 
     // fielding
     int field_base = team_base[field_team];
@@ -82,28 +88,32 @@ bool GetActivePorts(int* fielder_port_out, int* batter_port_out)
 
 CGECKO(TeamsExhibition, .address = 0x806AC530, .state = MSSB_GAME,
                         .instruction = "blr",
-                        .notes = "Allows 1v2, 2v2, and 1v3 team matches in exhibition mode. Teammates swap\n"
-                                 "control every at-bat when batting, and every inning or batter when fielding.\n"
-                                 "Who drafts picks the mode: Port 2 = 1v2, Port 3 = 2v2, Port 4 = 1v3.");
+                        .notes = "Allows 1v2, 2v2, and 1v3 team matches in exhibition mode\n"
+                                 "Batting:  swaps every plate appearance.\n"
+                                 "Fielding: swaps every inning (2 players) or every batter (3 players)\n\n"
+                                 "Game type is based on who drafts:\n"
+                                 "  Port 2 -> 1v2 (P1 vs P2/P3)\n"
+                                 "  Port 3 -> 2v2 (P1/P2 vs P3/P4)\n"
+                                 "  Port 4 -> 1v3 (P1 vs P2/P3/P4)\n"
+                                );
 void TeamsExhibition()
 {
-    // freeze during replays: copying live inputs over the recorded ones would corrupt playback
-    int scene = g_GameLogic.sceneID;
-    if (scene == SCENE_ID_REPLAY_AT_BAT || scene == SCENE_ID_REPLAY_LIVE_BALL)
-        return;
-
     int fielder_port, batter_port;
-    if (!GetActivePorts(&fielder_port, &batter_port))
+    if (!GetActivePorts(&fielder_port, &batter_port, ball_in_play != 1))
         return;
 
-    // TEMPORARY: report the active ports to the Rio client for autogolf mode
-    autogolf_ports[0] = fielder_port + 1;
-    autogolf_ports[1] = batter_port + 1;
-
-    // overwrite the read port's inputs with the active teammate's (never write teamPorts)
     int read_port[2];
     read_port[0] = 0;
     read_port[1] = g_d_GameSettings.PlayerPorts[1];
+
+    // replays play recorded inputs back through the drafting ports: hand those back, copy nothing
+    int scene = g_GameLogic.sceneID;
+    if (scene == SCENE_ID_REPLAY_AT_BAT || scene == SCENE_ID_REPLAY_LIVE_BALL)
+    {
+        g_GameLogic.teams[0] = read_port[0];
+        g_GameLogic.teams[1] = read_port[1];
+        return;
+    }
 
     int field_team = g_GameLogic.teamFielding;
     int bat_team   = g_GameLogic.teamBatting;
@@ -111,6 +121,11 @@ void TeamsExhibition()
     active_port[field_team] = fielder_port;
     active_port[bat_team]   = batter_port;
 
+    // the game and the Rio client both take each team's port from here
+    g_GameLogic.teams[0] = active_port[0];
+    g_GameLogic.teams[1] = active_port[1];
+
+    // anything still reading the drafting ports gets the active teammate's inputs too
     for (int t = 0; t < 2; t++)
     {
         int src = active_port[t];
@@ -118,8 +133,8 @@ void TeamsExhibition()
         if (src == dst)
             continue;
         // InputStruct is 0x10 bytes; copy as 4 words to avoid a memcpy call
-        u32* s = (u32*)&g_Controls[src];
-        u32* d = (u32*)&g_Controls[dst];
+        u32* s = (u32*)&g_ControlsByPort[src];
+        u32* d = (u32*)&g_ControlsByPort[dst];
         d[0] = s[0];
         d[1] = s[1];
         d[2] = s[2];
@@ -138,7 +153,7 @@ CGECKO(TeamsPortIcons_Ongoing, .address = 0x806D8EC0, .state = MSSB_GAME,
 void TeamsPortIcons_Ongoing()
 {
     int fielder_port, batter_port;
-    if (!GetActivePorts(&fielder_port, &batter_port))
+    if (!GetActivePorts(&fielder_port, &batter_port, IsAtBatScene()))
         return;
 
     u8* mgr = (u8*)currentDrawingItem;
