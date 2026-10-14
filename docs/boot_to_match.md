@@ -85,7 +85,8 @@ gecko code from a HUD file: it scans the compiled code for the magic `'RIOB'`
   register: inning 3 / score_home 3 / balls 3 became a single `li`) and the
   client's byte patching silently stops applying.
 
-Payload layout: `magic` at 0, `spec` at 4 (85 bytes + 1 pad), `config` at 90.
+Payload layout: `magic` at 0, `spec` at 4 (85 bytes + 1 pad), `config` at 90
+(170 bytes; `stamina_P1P2` at payload 224). 260 bytes in all.
 
 ### BootMatchSpec
 
@@ -125,6 +126,7 @@ that load, so the gate is self-limiting.
 | orderFieldHand/BatHand/Superstar_P1P2[2][9] | per natural batting slot, P1/P2-indexed |
 | runner_present/rosterLoc/charID[3] | 1B/2B/3B                                 |
 | positionSwap[2][9] | `positionSwapMapping`: the fielding position each roster slot plays, in draft order. Staged verbatim; identity does not work because a position-order roster feeds the fielder-table build wrong. |
+| stamina_P1P2[2][9] | pitcher stamina (u16) per natural batting slot, P1/P2-indexed; `0xFFFF` keeps the game's starting value. Written to `PitcherStats_P1_P2[team][slot].stamina` (`0x803535D8 + (team*9 + slot)*0x1E`), which `initializeStats()` resets to 10 during the load, so it is re-applied every load frame like the score. |
 
 `characterSelectScreen()` only builds a default order from the position-ordered
 roster, so the real batting order, the fielder at each position and the current

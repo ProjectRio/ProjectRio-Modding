@@ -63,6 +63,10 @@ typedef struct BootStateConfig
     u8 runner_charID[3];
 
     u8 positionSwap[2][9];    // positionSwapMapping, draft-slot order (identity does NOT work)
+
+    // Pitcher stamina per natural batting slot (the inMemRoster index), P1/P2-indexed.
+    // TBM_STAMINA_KEEP leaves the game's starting value.
+    u16 stamina_P1P2[2][9];
 } BootStateConfig;
 
 // The Rio client patches this blob in place by scanning for `magic`; any layout
@@ -131,6 +135,9 @@ static const BootMatchPayload boot_payload =
         .runner_charID    = { 0, 0, 0 },
         // placeholder roster is in position order, so positionSwap is identity
         .positionSwap = { { 0,1,2,3,4,5,6,7,8 }, { 0,1,2,3,4,5,6,7,8 } },
+        // placeholder: P1's leadoff is tired, everyone else keeps the starting value
+        .stamina_P1P2 = { { 3, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF },
+                          { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF } },
     },
 };
 
@@ -154,6 +161,11 @@ static const BootMatchPayload boot_payload =
 #define tbm_runnerCharID(i)     VAR_ADDRESS(u16,  0x8088F04E + (i) * 0x154)
 #define tbm_runnerClearInstr(i) VAR_ADDRESS(u32, 0x806C9420 + (i) * 0x30)
 static inline u32 tbm_runnerRestoreInstr(int i) { return (i == 0) ? 0xB0650234 : 0xB06500E0; }
+
+// PitcherStats_P1_P2[team][rosterID].stamina (u16 at +0x10 of the 0x1E-byte entry). The ASM
+// header doesn't name the field; initializeStats() resets it to 10 during the load.
+#define tbm_pitcherStamina(team, i) VAR_ADDRESS(u16, 0x803535D8 + ((team) * 9 + (i)) * 0x1E)
+#define TBM_STAMINA_KEEP 0xFFFF
 
 // Outs are applied a few seconds after the match starts: booting with outs on the board silences the first at-bat's BGM.
 #define TBM_OUTS_DELAY_FRAMES 180
@@ -265,6 +277,15 @@ static inline void TestBoot_ApplyGameState(const BootStateConfig* c)
                     inMemRoster[team][i].stats.BattingStance  = c->orderBatHand_P1P2[team][i];
                     inMemRoster[team][i].stats.UnusedBytes[0] = c->orderSuperstar_P1P2[team][i];
                 }
+            }
+        }
+
+        for (int team = 0; team < 2; team++)
+        {
+            for (int i = 0; i < 9; i++)
+            {
+                if (c->stamina_P1P2[team][i] != TBM_STAMINA_KEEP)
+                    tbm_pitcherStamina(team, i) = c->stamina_P1P2[team][i];
             }
         }
 
