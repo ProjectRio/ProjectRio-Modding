@@ -1,0 +1,13 @@
+{
+    "name": "Ranked",
+    "description": "The competitive ruleset: everything in Gecko Codes/Ranked, on by default. Add a code to that folder and it lands in this download.",
+    "folders": ["Gecko Codes/Ranked"],
+    "enabled": true,
+    "exclude": [],
+    "_notes": [
+        "Manual Fielder Select.c is the only code here that hooks 0x80678F8C: the v4.1 and",
+        "v5.0 .asm files and the half-finished C port that all shared that site were",
+        "folded into it (v5 behaviour). Keep it that way -- cgecko keys codes by name, so",
+        "two files hooking one site build fine and silently fight at runtime."
+    ]
+}
