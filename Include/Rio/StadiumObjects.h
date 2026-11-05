@@ -17,7 +17,9 @@ typedef struct StadiumObjectPlacement
     /*0x08*/ f32 z;
     /*0x0C*/ f32 rotation;
     /*0x10*/ u8  type;
-    /*0x11*/ u8  _11[3];
+    /*0x11*/ u8  shown;      /* draws, and has collision */
+    /*0x12*/ u8  group;      /* collision bounding-box group, 0..9 */
+    /*0x13*/ u8  variant;    /* Peach: what a block turns into when hit */
 } StadiumObjectPlacement;    /* size: 0x14 */
 
 /* game.rel .data: thwompStaticValues */
@@ -28,12 +30,19 @@ typedef struct StadiumObjectPlacement
 #define PEACH_BLOCK_COUNT 16
 #define g_PeachBlocks ARRAY_1D_ADDRESS(StadiumObjectPlacement, PEACH_BLOCK_COUNT, 0x807CD098)
 
+/* The whole table: blocks, then the DEBRIS entries, then one SHADOW entry. */
+#define PEACH_BLOCK_TABLE_SIZE 50
+#define g_PeachBlockTable ARRAY_1D_ADDRESS(StadiumObjectPlacement, PEACH_BLOCK_TABLE_SIZE, 0x807CD098)
+
 enum
 {
     PEACH_BLOCK_BRICK   = 0,
     PEACH_BLOCK_METAL   = 1,
     PEACH_BLOCK_NOTE    = 2,
     PEACH_BLOCK_OUTLINE = 3,
+    PEACH_BLOCK_SHADOW  = 4,   /* table marker: one shadow per block goes here */
+    PEACH_BLOCK_DEBRIS  = 5,   /* table marker: brick debris slot */
+    PEACH_BLOCK_RANDOM  = 8,   /* variant: rolled at load */
 };
 
 static inline void Thwomps_SetHeight(f32 y)

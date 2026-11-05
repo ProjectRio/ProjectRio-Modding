@@ -122,3 +122,41 @@ per-frame writes, which keep the condition as `BatterIsPlaced()`. Four pieces:
   original clobbered r19/f28/f29 and then zeroed them, wrote its 2.0f constant
   into `g_Batter.batterPos.x` as scratch, and on the Z axis reset `p` to the X
   change word instead of 0.0f. All three were fixed.
+
+## All Balls Are Fair (per frame, `RioPatch` table)
+
+There is no single fair/foul function. The game decides in three ways, and the
+code patches each one:
+
+- **Geometry: `foul_checkIfFoul` (`0x806F6EA4`).** `z < x - 0.15 || z < -x - 0.15`,
+  with home plate at the origin and +z toward center field. It lives in its own TU
+  (`foul_detection.c`), so it is never inlined and every caller reaches it through a
+  `bl`. Both of its return arms become `li r3, 0` (`0x806F6EB8`, `0x806F6ED0`).
+- **The collision mesh's foul bit (`BALL_COLLISION_TYPE_FOUL`, 0x80).** Foul-territory
+  surfaces carry it, and these four sites test it inline:
+  - checkForBallDead `0x80645758`: `rlwinm r29` (isFoul) -> `li r29, 0`
+  - fairOrFoulBall `0x80648364` (wall hit), and ballCollisionLogic `0x80646C10`
+    (structure, in air) / `0x8064780C` (pit, untouched by a fielder): the
+    `rlwinm.` -> `cmpw rN, rN`, which leaves cr0 "equal", i.e. bit clear.
+- **The at-contact prediction (`g_Batter.predictedHitOutcome`).**
+  classifyHitTrajectoryOrHitAnimRelated sets `FOUL`/`FOUL_BUNT` from the hit and
+  landing angles. A predicted foul keeps the batter in the box (runner.c,
+  `batterStayInBattersBoxReason = 3`), so the block is skipped: the `blt` into it at
+  `0x8064B8C4` -> `nop`, and the `bge` past it at `0x8064B8D4` -> `b`.
+
+`foulBall` is inlined at every one of its 16 uses in ball_physics.c (each copy ends
+in `QueueTextToDisplay(3, 0)`, the FOUL text). Every copy sits behind one of the
+tests above, so none of them needs patching. `fn_3_BC54` and `fn_3_A020` are
+standalone copies of those inlined blocks and are never called.
+
+**A ball that leaves the park in foul territory.** checkForBallDead handles a ball
+over a STRUCTURE (the stands) for 5+ frames while `IN_AIR`: if `isFoul`, it is a
+dead foul ball; otherwise it is `deadBallReason = 1` and the HOME RUN text (0xF).
+With isFoul forced to 0, a ball into the foul stands or the backstop is a home
+run. A ball that lands first and then rolls out is a ground-rule double, the same
+as a fair ball. The foul pole (`BALL_COLLISION_TYPE_FOUL_LINE`) is already a home
+run in stock.
+
+Not patched: `hitClassification3` 7/8 (balls hit behind the plate) still picks
+the fielders' foul-ball movement set, and Toy Field's own `foulBall` calls are
+left alone.
